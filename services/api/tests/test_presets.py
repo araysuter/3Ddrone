@@ -33,8 +33,23 @@ def test_high_fc330_preset_enables_gpu_products_and_known_readout():
     assert options["gltf"] is True
     assert options["3d-tiles"] is True
     assert options["cog"] is True
+    assert options["crop"] == 0
     assert "ignore-gsd" not in options
     assert "no-gpu" not in options
+
+
+def test_default_crop_can_be_overridden_explicitly():
+    outputs = resolve_outputs({"splat": False})
+    options = as_dict(
+        resolve_odm_options(
+            "standard",
+            outputs,
+            {"camera_model": "FC330", "megapixels": 9, "host_ram_gb": 48},
+            {"crop": 2.5},
+        )
+    )
+
+    assert options["crop"] == 2.5
 
 
 def test_output_dependencies_are_resolved():

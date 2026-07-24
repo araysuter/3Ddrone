@@ -174,6 +174,10 @@ def resolve_odm_options(
     if preset_name not in PRESETS:
         raise ValueError("Unknown preset")
     options = {
+        # ODM otherwise trims a three-meter buffer from automatically detected
+        # dataset boundaries. Preserve all reconstructed edge coverage by
+        # default; operators can still request an explicit crop in Advanced.
+        "crop": 0,
         **PRESETS[preset_name]["odm"],
         "feature-type": "sift",
         "max-concurrency": calculate_concurrency(

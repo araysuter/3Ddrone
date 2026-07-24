@@ -748,6 +748,11 @@ async def reprocess_project(
         error=None,
         cancel_requested=0,
     )
+    emit_event(
+        project_id,
+        "state",
+        {"status": "queued", "stage": "Queued", "progress": 0, "reprocess": True},
+    )
     notify_runner()
     return get_project(project_id)
 

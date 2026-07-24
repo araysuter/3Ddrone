@@ -85,6 +85,19 @@ export const api = {
     request<Project>(`/api/projects/${id}/cancel`, { method: "POST" }),
   retrySplat: (id: string) =>
     request<Project>(`/api/projects/${id}/retry-splat`, { method: "POST" }),
+  reprocessProject: (
+    id: string,
+    payload: {
+      name: string;
+      preset: string;
+      outputs: Record<string, boolean>;
+      advanced?: Record<string, unknown>;
+    },
+  ) =>
+    request<Project>(`/api/projects/${id}/reprocess`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   deleteProject: (project: Project) =>
     request<void>(`/api/projects/${project.id}`, {
       method: "DELETE",

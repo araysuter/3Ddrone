@@ -7,17 +7,20 @@ import {
   Layers3,
   Map as MapIcon,
   Mountain,
+  RotateCcw,
   UploadCloud,
   X,
 } from "lucide-react";
 import { api } from "../lib/api";
-import type { AdvancedOption } from "../types";
+import type { AdvancedOption, Project } from "../types";
 
 interface Props {
   open: boolean;
   busy: boolean;
+  mode?: "create" | "reprocess";
+  initialProject?: Project;
   onClose: () => void;
-  onCreate: (payload: {
+  onSubmit: (payload: {
     name: string;
     preset: string;
     outputs: Record<string, boolean>;
@@ -36,6 +39,9 @@ const outputChoices = [
   ["raw", "Raw outputs", Gauge],
   ["splat", "Gaussian splat", Box],
 ] as const;
+
+const defaultOutputs = Object.fromEntries(outputChoices.map(([id]) => [id, true]));
+const defaultAdvanced = { crop: 0 };
 
 const presets = [
   {
@@ -56,22 +62,36 @@ const presets = [
     detail: "1 cm requested · 45k splat steps",
     time: "Slowest",
   },
-];
+] as const;
 
-export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
-  const [name, setName] = useState("");
+export function NewProjectDialog({
+  open,
+  busy,
+  mode = "create",
+  initialProject,
+  onClose,
+  onSubmit,
+}: Props) {
+  const reprocessing = mode === "reprocess";
+  const [name, setName] = useState(initialProject?.name ?? "");
   const [files, setFiles] = useState<File[]>([]);
-  const [preset, setPreset] = useState("high");
+  const [preset, setPreset] = useState(initialProject?.preset ?? "high");
   const [outputs, setOutputs] = useState<Record<string, boolean>>(
-    Object.fromEntries(outputChoices.map(([id]) => [id, true])),
+    () => ({ ...defaultOutputs, ...(initialProject?.outputs ?? {}) }),
   );
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedOptions, setAdvancedOptions] = useState<AdvancedOption[]>();
-  const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({});
+  const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>(
+    () => ({ ...defaultAdvanced, ...(initialProject?.advanced ?? {}) }),
+  );
   const [advancedError, setAdvancedError] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const totalSize = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files]);
+  const retainedInputCount =
+    initialProject?.uploads?.filter(
+      (upload) => upload.state === "complete" && ["image", "video"].includes(upload.kind),
+    ).length ?? 0;
 
   useEffect(() => {
     if (!open || !advancedOpen || advancedOptions) return;
@@ -147,18 +167,34 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
     setAdvancedValues((current) => ({ ...current, [option.name]: value }));
   }
 
-  async function create() {
-    if (!name.trim() || !files.length || !Object.values(outputs).some(Boolean) || busy) return;
+  async function submit() {
+    if (
+      !name.trim() ||
+      (!reprocessing && !files.length) ||
+      !Object.values(outputs).some(Boolean) ||
+      busy
+    ) {
+      return;
+    }
     setError("");
     try {
-      await onCreate({ name: name.trim(), preset, outputs, advanced: advancedValues, files });
-      setName("");
-      setFiles([]);
-      setPreset("high");
-      setAdvancedValues({});
-      setAdvancedOpen(false);
+      await onSubmit({ name: name.trim(), preset, outputs, advanced: advancedValues, files });
+      if (!reprocessing) {
+        setName("");
+        setFiles([]);
+        setPreset("high");
+        setOutputs({ ...defaultOutputs });
+        setAdvancedValues({ ...defaultAdvanced });
+        setAdvancedOpen(false);
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Project could not be created");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : reprocessing
+            ? "Project could not be reprocessed"
+            : "Project could not be created",
+      );
     }
   }
 
@@ -173,8 +209,10 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
       >
         <header className="modal-header">
           <div>
-            <p className="eyebrow">NEW DATASET</p>
-            <h2 id="new-project-title">Create mapping project</h2>
+            <p className="eyebrow">{reprocessing ? "REPROCESS DATASET" : "NEW DATASET"}</p>
+            <h2 id="new-project-title">
+              {reprocessing ? "Reprocess with different settings" : "Create mapping project"}
+            </h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Close">
             <X size={18} />
@@ -190,35 +228,49 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
               onChange={(event) => setName(event.target.value)}
             />
           </label>
-          <div
-            className="drop-zone"
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={drop}
-          >
-            <input
-              ref={inputRef}
-              hidden
-              type="file"
-              multiple
-              accept=".jpg,.jpeg,.dng,.tif,.tiff,.mp4,.mov,.lrv,.ts,.srt,.lchm,.txt,.las,.laz"
-              onChange={(event: ChangeEvent<HTMLInputElement>) => addFiles(event.target.files)}
-            />
-            <UploadCloud size={25} strokeWidth={1.5} />
-            <strong>{files.length ? `${files.length} files ready` : "Drop source files here"}</strong>
-            <span>
-              {files.length
-                ? `${(totalSize / 1024 / 1024).toFixed(1)} MB · Click to add more`
-                : "JPG, DNG, TIFF, video, GCP, GEO or Litchi mission"}
-            </span>
-          </div>
-          {files.length > 0 && (
-            <div className="file-preview-row">
-              <FileImage size={14} />
-              <span>{files.slice(0, 3).map((file) => file.name).join(", ")}</span>
-              {files.length > 3 && <em>+{files.length - 3} more</em>}
-              <button onClick={() => setFiles([])}>Clear</button>
+          {reprocessing ? (
+            <div className="reprocess-source-note">
+              <RotateCcw size={18} />
+              <div>
+                <strong>Reusing {retainedInputCount} retained reconstruction files</strong>
+                <span>
+                  Existing artifacts stay on disk until the replacement ODM run is ready.
+                </span>
+              </div>
             </div>
+          ) : (
+            <>
+              <div
+                className="drop-zone"
+                onClick={() => inputRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={drop}
+              >
+                <input
+                  ref={inputRef}
+                  hidden
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.dng,.tif,.tiff,.mp4,.mov,.lrv,.ts,.srt,.lchm,.txt,.las,.laz"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => addFiles(event.target.files)}
+                />
+                <UploadCloud size={25} strokeWidth={1.5} />
+                <strong>{files.length ? `${files.length} files ready` : "Drop source files here"}</strong>
+                <span>
+                  {files.length
+                    ? `${(totalSize / 1024 / 1024).toFixed(1)} MB · Click to add more`
+                    : "JPG, DNG, TIFF, video, GCP, GEO or Litchi mission"}
+                </span>
+              </div>
+              {files.length > 0 && (
+                <div className="file-preview-row">
+                  <FileImage size={14} />
+                  <span>{files.slice(0, 3).map((file) => file.name).join(", ")}</span>
+                  {files.length > 3 && <em>+{files.length - 3} more</em>}
+                  <button onClick={() => setFiles([])}>Clear</button>
+                </div>
+              )}
+            </>
           )}
           <fieldset>
             <legend>Precision profile</legend>
@@ -270,6 +322,7 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
               <p className="advanced-note">
                 Only server-allowlisted options from this NodeODM engine are shown. Path, cluster,
                 rerun-stage and resource-bypass flags are blocked.
+                Edge cropping is disabled by default (`crop=0`).
               </p>
               {!advancedOptions && !advancedError && (
                 <div className="advanced-status">Loading current ODM option metadata…</div>
@@ -331,18 +384,33 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
           {error && <div className="form-error">{error}</div>}
         </div>
         <footer className="modal-footer">
-          <span>Files are retained locally until you confirm project deletion.</span>
+          <span>
+            {reprocessing
+              ? "Original uploads remain retained throughout reprocessing."
+              : "Files are retained locally until you confirm project deletion."}
+          </span>
           <div>
             <button className="button secondary" onClick={onClose}>
               Cancel
             </button>
             <button
               className="button primary"
-              disabled={busy || !name.trim() || !files.length || !Object.values(outputs).some(Boolean)}
-              onClick={create}
+              disabled={
+                busy ||
+                !name.trim() ||
+                (!reprocessing && !files.length) ||
+                !Object.values(outputs).some(Boolean)
+              }
+              onClick={submit}
             >
-              <UploadCloud size={15} />
-              {busy ? "Starting upload…" : "Create & upload"}
+              {reprocessing ? <RotateCcw size={15} /> : <UploadCloud size={15} />}
+              {busy
+                ? reprocessing
+                  ? "Queuing reprocess…"
+                  : "Starting upload…"
+                : reprocessing
+                  ? "Reprocess project"
+                  : "Create & upload"}
             </button>
           </div>
         </footer>

@@ -263,6 +263,56 @@ def test_start_rejects_unfinished_and_too_small_photo_sets(authenticated):
     assert "three overlapping images" in too_small.json()["detail"]
 
 
+def test_reprocess_reuses_completed_uploads_and_applies_new_settings(authenticated):
+    client, csrf = authenticated
+    project = create_project(client, csrf, name="Original mapping")
+    source_paths = []
+    for index in range(3):
+        content = jpeg_bytes((24 + index, 80 + index, 120))
+        filename = f"DJI_{index:04}.JPG"
+        upload = initialize(client, csrf, project["id"], filename, content)
+        client.patch(
+            f"/api/uploads/{upload['id']}",
+            headers={"X-CSRF-Token": csrf, "Upload-Offset": "0"},
+            content=content,
+        )
+        completed = client.post(
+            f"/api/uploads/{upload['id']}/complete",
+            headers={"X-CSRF-Token": csrf},
+            json={"sha256": hashlib.sha256(content).hexdigest()},
+        )
+        assert completed.status_code == 200
+        source_paths.append(settings.data_root / "source" / project["id"] / filename)
+
+    with transaction() as db:
+        db.execute(
+            "UPDATE projects SET status='completed',stage='Completed',progress=100 WHERE id=?",
+            (project["id"],),
+        )
+
+    response = client.post(
+        f"/api/projects/{project['id']}/reprocess",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "name": "Reprocessed mapping",
+            "preset": "ultra",
+            "outputs": {"splat": False, "dtm": False},
+            "advanced": {"crop": 0, "pc-filter": 0},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    reprocessed = response.json()
+    assert reprocessed["name"] == "Reprocessed mapping"
+    assert reprocessed["preset"] == "ultra"
+    assert reprocessed["status"] == "queued"
+    assert reprocessed["progress"] == 0
+    assert reprocessed["advanced"] == {"crop": 0.0, "pc-filter": 0.0}
+    assert len(reprocessed["uploads"]) == 3
+    assert all(upload["state"] == "complete" for upload in reprocessed["uploads"])
+    assert all(path.is_file() for path in source_paths)
+
+
 def test_docs_are_disabled_and_sessions_expire(authenticated):
     client, _ = authenticated
     assert client.get("/docs").status_code == 404

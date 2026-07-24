@@ -14,8 +14,10 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [reprocessProjectId, setReprocessProjectId] = useState<string>();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
   const [logs, setLogs] = useState<Record<string, string[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<SystemMetrics>();
@@ -23,6 +25,10 @@ export default function App() {
   const selected = useMemo(
     () => projects.find((project) => project.id === selectedId),
     [projects, selectedId],
+  );
+  const reprocessProject = useMemo(
+    () => projects.find((project) => project.id === reprocessProjectId),
+    [projects, reprocessProjectId],
   );
 
   const refresh = useCallback(async () => {
@@ -165,6 +171,27 @@ export default function App() {
     }
   }
 
+  async function reprocessExistingProject(payload: {
+    name: string;
+    preset: string;
+    outputs: Record<string, boolean>;
+    advanced: Record<string, unknown>;
+  }) {
+    if (!reprocessProject) return;
+    setReprocessing(true);
+    try {
+      const updated = await api.reprocessProject(reprocessProject.id, payload);
+      setProjects((current) =>
+        current.map((project) => (project.id === updated.id ? updated : project)),
+      );
+      setSelectedId(updated.id);
+      setReprocessProjectId(undefined);
+      await refresh();
+    } finally {
+      setReprocessing(false);
+    }
+  }
+
   async function logout() {
     try {
       await api.logout();
@@ -227,13 +254,25 @@ export default function App() {
         metrics={metrics}
         onChanged={refresh}
         onResumeUploads={resumeUploads}
+        onReprocess={(project) => setReprocessProjectId(project.id)}
       />
       <NewProjectDialog
         open={newProjectOpen}
         busy={creating}
         onClose={() => !creating && setNewProjectOpen(false)}
-        onCreate={createProject}
+        onSubmit={createProject}
       />
+      {reprocessProject && (
+        <NewProjectDialog
+          key={reprocessProject.id}
+          open
+          mode="reprocess"
+          initialProject={reprocessProject}
+          busy={reprocessing}
+          onClose={() => !reprocessing && setReprocessProjectId(undefined)}
+          onSubmit={reprocessExistingProject}
+        />
+      )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );

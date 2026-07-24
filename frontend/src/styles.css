@@ -396,7 +396,7 @@ button {
   z-index: 20;
   top: 40px;
   right: 0;
-  width: 168px;
+  width: 238px;
   padding: 5px;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -412,13 +412,21 @@ button {
   padding: 8px;
   border: 0;
   border-radius: 3px;
-  color: #dd8686;
+  color: #aebbc5;
   background: transparent;
   cursor: pointer;
   font-size: 11px;
 }
 
 .action-menu button:hover {
+  background: #17232c;
+}
+
+.action-menu button.danger {
+  color: #dd8686;
+}
+
+.action-menu button.danger:hover {
   background: #27191d;
 }
 
@@ -1174,6 +1182,32 @@ button {
   max-height: calc(min(820px, 94vh) - 126px);
   overflow-y: auto;
   padding: 18px 20px 20px;
+}
+
+.reprocess-source-note {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #285275;
+  border-radius: 4px;
+  background: #102536;
+  color: #68b7f6;
+}
+
+.reprocess-source-note div {
+  display: grid;
+  gap: 4px;
+}
+
+.reprocess-source-note strong {
+  color: #d2e7f8;
+  font-size: 12px;
+}
+
+.reprocess-source-note span {
+  color: #8ca5b8;
+  font-size: 10px;
 }
 
 .field-label,

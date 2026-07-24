@@ -4,6 +4,7 @@ import {
   MoreVertical,
   Play,
   RotateCcw,
+  Settings2,
   Square,
   Trash2,
 } from "lucide-react";
@@ -20,6 +21,7 @@ interface Props {
   metrics?: SystemMetrics;
   onChanged: () => Promise<void>;
   onResumeUploads: (project: Project, files: File[]) => Promise<void>;
+  onReprocess: (project: Project) => void;
 }
 
 export function Workspace({
@@ -29,6 +31,7 @@ export function Workspace({
   metrics,
   onChanged,
   onResumeUploads,
+  onReprocess,
 }: Props) {
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,11 @@ export function Workspace({
   const currentProject = project;
   const isActive = ["queued", "processing", "splatting"].includes(project.status);
   const hasResults = ["completed", "partial"].includes(project.status);
+  const canReprocess =
+    ["completed", "partial", "failed", "canceled"].includes(project.status) &&
+    project.uploads?.some(
+      (upload) => upload.state === "complete" && ["image", "video"].includes(upload.kind),
+    );
   const needsUploadRecovery =
     ["uploading", "failed", "canceled"].includes(project.status) &&
     uploadProgress === undefined &&
@@ -133,7 +141,17 @@ export function Workspace({
             </button>
             {menu && (
               <div className="action-menu">
-                <button onClick={remove}>
+                {canReprocess && (
+                  <button
+                    onClick={() => {
+                      setMenu(false);
+                      onReprocess(currentProject);
+                    }}
+                  >
+                    <Settings2 size={14} /> Reprocess with different settings
+                  </button>
+                )}
+                <button className="danger" onClick={remove}>
                   <Trash2 size={14} /> Delete project
                 </button>
               </div>

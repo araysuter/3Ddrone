@@ -99,6 +99,12 @@ At 1440×900 and 1280×720:
     reads `ODM only`, NodeODM effective options contain `skip-3dmodel`,
     `skip-report`, and no `dtm`, and the selected-output archive contains none
     of those product families.
+13. Open a completed project's actions menu, choose **Reprocess with different
+    settings**, change its preset and at least one output, and submit without
+    selecting imagery again. Confirm the retained upload count is shown,
+    NodeODM's effective options include `crop=0` unless Advanced overrides it,
+    the new output selection is honored, and the prior local artifacts remain
+    available until the replacement archive passes validation.
 
 ## Stop conditions
 

@@ -18,6 +18,10 @@ This repository combines OpenDroneMap with a local application layer. The follow
   load progress, failures, and camera fitting are visible instead of producing
   an unexplained blank canvas.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
+  Mapper presets disable ODM edge cropping by default (`crop=0`). A project can
+  be reprocessed with new preset, output, and allowlisted Advanced settings
+  while retaining its validated source uploads and keeping the prior local
+  artifacts until their replacement archive is safely installed.
 - `services/splat/`: best-effort native OpenSfM-to-COLMAP interchange export,
   Nerfstudio's supported ODM camera conversion, checkpoint-aware regular
   Splatfacto training, PLY export, Spark SPZ compression, and scene-transform

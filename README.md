@@ -124,9 +124,17 @@ Open the HTTPS URL reported by Tailscale, create the one local administrator, an
 
 The default High profile requests 2.5 cm raster resolution, high point-cloud density, and 30,000 regular Splatfacto steps. Standard requests 5 cm and 15,000 steps. Ultra requests 1 cm and 45,000 steps. ODM still caps outputs by its estimated ground sampling distance; the application never enables `ignore-gsd`.
 
+ODM edge cropping is disabled by default with `crop=0`, so reconstructed coverage is not trimmed merely because it lies near the mapping boundary. The Advanced drawer can override that value when a deliberately cropped deliverable is desired.
+
 FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correction. Litchi `.lchm` files are retained as provenance but are never submitted as reconstruction inputs. Accepted imagery is JPG/JPEG, DNG, TIF/TIFF, MP4, MOV, LRV, or MPEG transport-stream video. The supported control inputs are `gcp_list.txt`, `geo.txt`, `image_groups.txt`, `align.las`, `align.laz`, `align.tif`, and SRT subtitle telemetry.
 
 Consumer drone GPS is labeled “best effort,” not survey grade. Measurements use the project coordinate reference system when georeferenced products are available. Supplying GCPs changes the label to “GCP-assisted,” but the quality report and control residuals remain authoritative.
+
+Completed, partial, failed, and canceled projects with retained imagery can be
+queued again from **Project actions → Reprocess with different settings**. The
+dialog reuses the original uploads and lets the operator change the preset,
+outputs, and allowlisted Advanced values. Existing local results stay available
+until the replacement NodeODM archive has been downloaded and validated.
 
 ## Development
 
