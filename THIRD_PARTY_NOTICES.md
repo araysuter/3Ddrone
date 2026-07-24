@@ -7,7 +7,8 @@ The complete source and license texts in this repository remain authoritative. T
 | OpenDroneMap | 3.6.0 | AGPLv3 | Root source, `LICENSE`, and `licenses/` |
 | NodeODM | 2.2.3 | AGPLv3 | `vendor/nodeodm/` and `vendor/nodeodm/LICENSE` |
 | Nerfstudio | 1.1.5 | Apache-2.0 | Installed in `services/splat/Dockerfile` |
-| gsplat | Nerfstudio dependency | Apache-2.0 | Installed by Nerfstudio |
+| gsplat | 1.4.0 | Apache-2.0 | Pinned and compiled in `services/splat/Dockerfile` |
+| PyTorch | 2.4.1 | BSD-3-Clause | CUDA 12.4 wheel pinned in `services/splat/requirements.txt` |
 | Spark | 2.1.0 | MIT | Frontend dependency and pinned compressor checkout |
 | React | 19.1.0 | MIT | `frontend/package-lock.json` |
 | Vite | 6.3.5 | MIT | `frontend/package-lock.json` |

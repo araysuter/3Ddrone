@@ -12,6 +12,7 @@ The web app accepts drone imagery and supporting control files, retains every pr
 - FastAPI/SQLite orchestrator with one-time admin setup, Argon2id, secure sessions, CSRF protection, resumable uploads, SHA-256 validation, SSE, durable jobs, and allowlisted artifacts.
 - One GPU queue: NodeODM completes before the Splatfacto worker can run.
 - Memory-safe regular Splatfacto profiles for the 8 GB RTX 3060 Ti; `splatfacto-big` is not used.
+- Reproducible splat stack pinned to Nerfstudio 1.1.5, gsplat 1.4.0, PyTorch 2.4.1, CUDA 12.4, and compute capability 8.6.
 - OpenLayers, the NodeODM Potree output, Three.js, and Spark 2.1 viewers.
 - Local-only `127.0.0.1:8080` binding designed for Tailscale Serve.
 

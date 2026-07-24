@@ -1,13 +1,46 @@
 ARG ODM_IMAGE=local-aerial-mapper/odm:3.6.0-gpu
+
+# Nerfstudio 1.1.5's gsplat backend needs a CUDA compiler. Keep this toolchain
+# separate from ODM's CUDA 12.9 runtime so the already-built ODM image remains
+# untouched while PyTorch and gsplat use a matching, pinned CUDA 12.4 stack.
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS splat-cuda
+
 FROM ${ODM_IMAGE}
 
 USER root
+COPY --from=splat-cuda /usr/local/cuda-12.4 /usr/local/cuda-12.4
+
+ENV CUDA_HOME=/usr/local/cuda-12.4 \
+    TORCH_CUDA_ARCH_LIST=8.6 \
+    MAX_JOBS=2 \
+    PATH="/opt/splat-venv/bin:/usr/local/cuda-12.4/bin:/code/venv/bin:$PATH"
+
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git nodejs npm \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        ninja-build \
+        nodejs \
+        npm \
+        python3-dev \
+        python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/splat/requirements.txt /tmp/splat-requirements.txt
-RUN /code/venv/bin/pip install --no-cache-dir -r /tmp/splat-requirements.txt
+RUN /usr/bin/python3 -m venv /opt/splat-venv \
+    && /opt/splat-venv/bin/pip install --no-cache-dir --upgrade "setuptools<70.0.0" wheel \
+    && /opt/splat-venv/bin/pip install --no-cache-dir \
+        torch==2.4.1+cu124 \
+        torchvision==0.19.1+cu124 \
+        --index-url https://download.pytorch.org/whl/cu124 \
+    && /opt/splat-venv/bin/pip install --no-cache-dir --no-build-isolation \
+        "git+https://github.com/nerfstudio-project/gsplat.git@v1.4.0" \
+    && /opt/splat-venv/bin/pip install --no-cache-dir -r /tmp/splat-requirements.txt \
+    && /opt/splat-venv/bin/python -c \
+        "import gsplat, nerfstudio, torch; assert torch.__version__.startswith('2.4.1'); assert torch.version.cuda == '12.4'; print('splat stack', torch.__version__, torch.version.cuda)"
 
 # Spark's MIT-licensed compressor produces the web-ready SPZ derivative.
 RUN git clone --branch v2.1.0 --depth 1 https://github.com/sparkjsdev/spark.git /opt/spark \
@@ -15,7 +48,7 @@ RUN git clone --branch v2.1.0 --depth 1 https://github.com/sparkjsdev/spark.git 
     && npm install
 
 COPY services/splat/app.py /app/app.py
-ENV PATH="/code/venv/bin:$PATH" \
+ENV PATH="/opt/splat-venv/bin:/usr/local/cuda-12.4/bin:/code/venv/bin:$PATH" \
     SPLAT_STATE_ROOT=/data/splat
 WORKDIR /app
 EXPOSE 8090
