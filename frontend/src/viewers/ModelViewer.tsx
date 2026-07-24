@@ -1,13 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 export function ModelViewer({ url }: { url: string }) {
   const target = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!target.current) return;
+    setLoading(true);
+    setError("");
     const host = target.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#081018");
@@ -16,6 +21,7 @@ export function ModelViewer({ url }: { url: string }) {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(host.clientWidth, host.clientHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -41,22 +47,42 @@ export function ModelViewer({ url }: { url: string }) {
       });
     };
 
-    new GLTFLoader().load(url, (gltf) => {
-      if (disposed) {
-        disposeObject(gltf.scene);
-        return;
-      }
-      model = gltf.scene;
-      scene.add(gltf.scene);
-      const box = new THREE.Box3().setFromObject(gltf.scene);
-      const size = box.getSize(new THREE.Vector3()).length();
-      const center = box.getCenter(new THREE.Vector3());
-      controls.target.copy(center);
-      camera.position.copy(center).add(new THREE.Vector3(size * 0.7, size * 0.45, size * 0.7));
-      camera.near = Math.max(0.01, size / 1000);
-      camera.far = Math.max(1000, size * 10);
-      camera.updateProjectionMatrix();
-    });
+    const draco = new DRACOLoader();
+    draco.setDecoderPath("/draco/");
+    draco.setWorkerLimit(2);
+    draco.preload();
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(draco);
+    loader.load(
+      url,
+      (gltf) => {
+        if (disposed) {
+          disposeObject(gltf.scene);
+          return;
+        }
+        model = gltf.scene;
+        const initialBox = new THREE.Box3().setFromObject(model);
+        const center = initialBox.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+        scene.add(model);
+        const box = new THREE.Box3().setFromObject(model);
+        const size = Math.max(box.getSize(new THREE.Vector3()).length(), 1);
+        controls.target.set(0, 0, 0);
+        camera.position.set(size * 0.7, size * 0.45, size * 0.7);
+        camera.near = Math.max(0.01, size / 1000);
+        camera.far = Math.max(1000, size * 10);
+        camera.updateProjectionMatrix();
+        controls.update();
+        setLoading(false);
+      },
+      undefined,
+      (reason) => {
+        if (disposed) return;
+        const detail = reason instanceof Error ? reason.message : String(reason);
+        setError(`The textured GLB could not be loaded. ${detail}`);
+        setLoading(false);
+      },
+    );
     let frame = 0;
     const animate = () => {
       controls.update();
@@ -76,10 +102,16 @@ export function ModelViewer({ url }: { url: string }) {
       resize.disconnect();
       controls.dispose();
       if (model) disposeObject(model);
+      draco.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
   }, [url]);
 
-  return <div className="three-viewer" ref={target} />;
+  return (
+    <div className="three-viewer" ref={target}>
+      {loading && <div className="viewer-loading viewer-overlay">LOADING 3D MODEL…</div>}
+      {error && <div className="viewer-error">{error}</div>}
+    </div>
+  );
 }

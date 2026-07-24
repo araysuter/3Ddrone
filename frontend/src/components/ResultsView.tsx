@@ -10,6 +10,10 @@ import {
   Mountain,
   Sparkles,
 } from "lucide-react";
+import {
+  findArtifact,
+  selectPointCloudArtifact,
+} from "../lib/artifacts";
 import type { Artifact, Project } from "../types";
 
 const MapViewer = lazy(() =>
@@ -17,6 +21,11 @@ const MapViewer = lazy(() =>
 );
 const ModelViewer = lazy(() =>
   import("../viewers/ModelViewer").then((module) => ({ default: module.ModelViewer })),
+);
+const PointCloudViewer = lazy(() =>
+  import("../viewers/PointCloudViewer").then((module) => ({
+    default: module.PointCloudViewer,
+  })),
 );
 const SplatViewer = lazy(() =>
   import("../viewers/SplatViewer").then((module) => ({ default: module.SplatViewer })),
@@ -40,11 +49,7 @@ function downloadUrl(project: Project, artifact: Artifact) {
 }
 
 function find(project: Project, category: string, labelPart?: string) {
-  return project.artifacts?.find(
-    (artifact) =>
-      artifact.category === category &&
-      (!labelPart || artifact.label.toLowerCase().includes(labelPart.toLowerCase())),
-  );
+  return findArtifact(project.artifacts, category, labelPart);
 }
 
 export function ResultsView({ project }: { project: Project }) {
@@ -126,22 +131,27 @@ export function ResultsView({ project }: { project: Project }) {
           {tab === "point_cloud" && (
             <ArtifactState
               project={project}
-              artifact={
-                find(project, "point_cloud", "Potree") ??
-                find(project, "point_cloud", "3D Tiles")
-              }
+              artifact={selectPointCloudArtifact(project.artifacts)}
             >
-              {(artifact) =>
-                artifact.viewer === "tiles3d" ? (
-                  <TilesViewer url={downloadUrl(project, artifact)} />
-                ) : (
+              {(artifact) => {
+                if (artifact.viewer === "tiles3d") {
+                  return (
+                    <TilesViewer url={downloadUrl(project, artifact)} />
+                  );
+                }
+                if (artifact.label.toLowerCase().includes("laz")) {
+                  return (
+                    <PointCloudViewer url={downloadUrl(project, artifact)} />
+                  );
+                }
+                return (
                   <iframe
                     className="artifact-iframe"
                     title="Potree point cloud"
                     src={downloadUrl(project, artifact)}
                   />
-                )
-              }
+                );
+              }}
             </ArtifactState>
           )}
           {tab === "mesh" && (

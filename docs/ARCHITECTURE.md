@@ -26,7 +26,7 @@ by its service user.
 source/<project UUID>/       Validated originals and support files
 nodeodm/<task UUID>/         NodeODM-owned durable task state
 splat/jobs/                  Durable splat job records
-splat/work/<project UUID>/   COLMAP export, ODM conversion, checkpoints, and recovery state
+splat/work/<project UUID>/   Optional COLMAP export, ODM conversion, checkpoints, and recovery state
 metadata/mapper.sqlite3      Users, sessions, projects, uploads, and SSE events
 metadata/projects/<UUID>/    Extracted allowlisted artifacts and all.zip
 logs/nodeodm/                NodeODM logs
@@ -73,10 +73,12 @@ On API restart, queued, processing, or splatting projects are reconciled.
 Existing NodeODM UUIDs are polled instead of re-uploaded. Transient NodeODM and
 splat polling failures use bounded retries rather than immediately failing a
 project. The splat worker changes an interrupted `running` job back to `queued`,
-reuses the OpenSfM/COLMAP and ODM-to-Nerfstudio conversions, and resumes from
-the newest Nerfstudio config/checkpoint when one exists. Final splat products
-are validated, fsynced, and atomically published so an interrupted export
-cannot replace a prior good result with a partial one.
+reuses the OpenSfM data, optional COLMAP interchange output, and
+ODM-to-Nerfstudio conversion, then resumes from the newest Nerfstudio
+config/checkpoint when one exists. The native COLMAP exporter is nonblocking
+because training consumes Nerfstudio's ODM conversion directly. Final splat
+products are validated, fsynced, and atomically published so an interrupted
+export cannot replace a prior good result with a partial one.
 
 If OpenMVS fails while cleaning ODM's full 3D Poisson mesh, the orchestrator
 uses NodeODM's standard restart API once with `skip-3dmodel`. ODM reuses its

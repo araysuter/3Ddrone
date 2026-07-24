@@ -17,7 +17,10 @@ splat_app = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(splat_app)
 
 
-def test_splat_pipeline_uses_supported_odm_and_spark_paths(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("colmap_succeeds", [True, False])
+def test_splat_pipeline_uses_supported_odm_and_spark_paths(
+    tmp_path, monkeypatch, colmap_succeeds
+) -> None:
     project_id = "00000000-0000-4000-8000-000000000001"
     data_root = tmp_path / "data"
     dataset = data_root / "metadata" / "projects" / project_id / "artifacts"
@@ -38,6 +41,8 @@ def test_splat_pipeline_uses_supported_odm_and_spark_paths(tmp_path, monkeypatch
     async def fake_run_command(job, command, **kwargs) -> None:
         commands.append(command)
         if "export_colmap" in command:
+            if not colmap_succeeds:
+                raise RuntimeError("synthetic OpenSfM exporter failure")
             export = tmp_path / "state" / "work" / project_id / "dataset" / "colmap_export"
             export.mkdir(parents=True)
             for name in ("cameras.bin", "images.bin", "points3D.bin"):
@@ -85,6 +90,12 @@ def test_splat_pipeline_uses_supported_odm_and_spark_paths(tmp_path, monkeypatch
     assert (output / "point_cloud.ply").is_file()
     assert (output / "scene.spz").read_bytes() == b"spz"
     assert json.loads((output / "scene_transform.json").read_text())["version"] == 1
+    assert (
+        json.loads((output / "scene_transform.json").read_text())[
+            "native_colmap_export"
+        ]["available"]
+        is colmap_succeeds
+    )
 
     colmap_command = next(command for command in commands if "export_colmap" in command)
     assert "--binary" in colmap_command

@@ -13,8 +13,8 @@ The web app accepts drone imagery and supporting control files, retains every pr
 - One GPU queue: NodeODM completes before the Splatfacto worker can run.
 - Memory-safe regular Splatfacto profiles for the 8 GB RTX 3060 Ti; `splatfacto-big` is not used.
 - Reproducible splat stack pinned to Nerfstudio 1.1.5, gsplat 1.4.0, PyTorch 2.4.1, CUDA 12.4, and compute capability 8.6.
-- OpenLayers raster maps, Potree/EPT or OGC 3D Tiles point clouds, Three.js
-  textured models, and Spark 2.1 Gaussian-splat viewing.
+- OpenLayers raster maps, OGC 3D Tiles or direct LAZ point clouds, Three.js
+  Draco-compressed textured models, and Spark 2.1 Gaussian-splat viewing.
 - Local-only `127.0.0.1:8080` binding designed for Tailscale Serve.
 
 ```mermaid
@@ -25,15 +25,17 @@ flowchart LR
     A --> O["NodeODM 2.2.3"]
     O --> M["Unmodified ODM 3.6.0 GPU engine"]
     A --> S["Splat worker"]
-    S --> C["OpenSfM export_colmap"]
+    S -. optional interchange .-> C["OpenSfM export_colmap"]
     S --> V["Nerfstudio ODM converter"]
     V --> G["Nerfstudio Splatfacto + gsplat"]
     G --> P["PLY + Spark SPZ + scene transform"]
 ```
 
-The native binary COLMAP export is retained as an interchange product. Training
-uses Nerfstudio's ODM converter because OpenSfM's calibrated Brown camera model
-exports as `FULL_OPENCV`, which Nerfstudio 1.1.5's COLMAP parser does not support.
+When OpenSfM can produce its native binary COLMAP export, it is retained as an
+interchange product. A failure in that optional exporter does not block splat
+training. Training uses Nerfstudio's ODM converter because OpenSfM's calibrated
+Brown camera model exports as `FULL_OPENCV`, which Nerfstudio 1.1.5's COLMAP
+parser does not support.
 
 ## Target host
 

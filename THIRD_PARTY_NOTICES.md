@@ -15,6 +15,8 @@ The complete source and license texts in this repository remain authoritative. T
 | Three.js | 0.180.0 | MIT | `frontend/package-lock.json` |
 | OpenLayers | 10.6.1 | BSD-2-Clause | `frontend/package-lock.json` |
 | 3d-tiles-renderer | 0.4.27 | Apache-2.0 | `frontend/package-lock.json` |
+| loaders.gl core/LAS | 4.4.3 | MIT | `frontend/package-lock.json` |
+| math.gl types | 4.1.0 | MIT | `frontend/package-lock.json` |
 | hash-wasm | 4.12.0 | MIT | `frontend/package-lock.json` |
 | proj4 | 2.20.9 | MIT | `frontend/package-lock.json` |
 | FastAPI | 0.139.2 | MIT | `services/api/requirements.txt` |

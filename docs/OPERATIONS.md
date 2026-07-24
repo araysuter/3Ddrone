@@ -124,8 +124,12 @@ Restore the entire configured data directory, not just `mapper.sqlite3`; databas
 - Interrupted upload: choose the same local files in the same project session; the browser queries the durable offset and resumes.
 - API restart during ODM: the saved NodeODM UUID is polled and the task continues.
 - NodeODM restart: its task directory remains mounted and NodeODM reloads durable task data.
-- Splat worker restart: `running` becomes `queued`; COLMAP output and Nerfstudio checkpoints remain in `splat/work`.
+- Splat worker restart: `running` becomes `queued`; optional COLMAP output,
+  ODM conversion, and Nerfstudio checkpoints remain in `splat/work`.
 - Splat failure: project becomes `partial`; ODM outputs stay available and only the splat stage can be retried.
+- Optional COLMAP exporter failure: the worker logs the exporter tail and
+  continues through Nerfstudio's ODM converter; use **Retry splat** on projects
+  created before this behavior was installed.
 - Full 3D mesh cleanup failure: the API retries the same NodeODM task once with ODM's 2.5D terrain mesh and reuses completed reconstruction work.
 - Other ODM failure, or a failed terrain-mesh recovery: inspect NodeODM console lines in the project log before changing any parameters.
 

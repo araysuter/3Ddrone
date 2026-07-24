@@ -62,7 +62,9 @@ Inspect NodeODM output and pass only if:
 - OpenMVS reports GPU use instead of silently falling back.
 - CPU/RAM-bound stages remain labeled as such; the UI must not imply full-pipeline CUDA.
 - Orthomosaic, LAZ/EPT/COPC, OBJ/GLB/3D Tiles, DSM, DTM, PDF report, logs/raw outputs, and `all.zip` are present.
-- `opensfm export_colmap --binary` succeeds from the packaged OpenSfM reconstruction.
+- `opensfm export_colmap --binary` is attempted from the packaged OpenSfM
+  reconstruction. If the optional exporter fails, its exact output is logged
+  and `ns-process-data odm` still completes from the authoritative ODM cameras.
 - Nerfstudio's `ns-process-data odm` conversion succeeds without replacing ODM's calibrated Brown camera model with a weaker model.
 - Regular Splatfacto stays within the 8 GB VRAM envelope.
 - PLY renders in Spark, SPZ compression succeeds, and `scene_transform.json` is retained.
@@ -77,6 +79,8 @@ At 1440×900 and 1280×720:
 2. Interrupt and resume an upload.
 3. Cancel an active ODM task and verify the durable state.
 4. Open orthomosaic, point cloud, GLB, splat, elevation, report, and files.
+   Confirm a direct LAZ fallback works when Potree/point-cloud 3D Tiles are not
+   present, and that ODM's Draco-compressed GLB renders without a decoder error.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
 7. Compare distance, area, and DSM/DTM samples against QGIS.

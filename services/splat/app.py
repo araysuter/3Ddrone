@@ -517,30 +517,58 @@ async def execute(job: dict[str, Any]) -> None:
 
     colmap_export = osfm_dataset / "colmap_export"
     colmap_files = ("cameras.bin", "images.bin", "points3D.bin")
-    if not all((colmap_export / name).is_file() for name in colmap_files):
+    colmap_export_available = all(
+        (colmap_export / name).is_file() for name in colmap_files
+    )
+    if not colmap_export_available:
         raise_if_canceled(job)
         set_state(job, 12, "Exporting OpenSfM cameras to binary COLMAP")
-        await run_command(
-            job,
-            [
-                "/code/SuperBuild/install/bin/opensfm/bin/opensfm",
-                "export_colmap",
-                str(osfm_dataset),
-                "--binary",
-            ],
-            progress_start=12,
-            progress_end=18,
-        )
-    missing_colmap = [name for name in colmap_files if not (colmap_export / name).is_file()]
-    if missing_colmap:
-        raise RuntimeError(
-            "OpenSfM COLMAP export is incomplete; missing " + ", ".join(missing_colmap)
-        )
+        colmap_warning: str | None = None
+        try:
+            await run_command(
+                job,
+                [
+                    "/code/SuperBuild/install/bin/opensfm/bin/opensfm",
+                    "export_colmap",
+                    str(osfm_dataset),
+                    "--binary",
+                ],
+                progress_start=12,
+                progress_end=18,
+            )
+            colmap_export_available = all(
+                (colmap_export / name).is_file() for name in colmap_files
+            )
+            if not colmap_export_available:
+                missing = [
+                    name for name in colmap_files if not (colmap_export / name).is_file()
+                ]
+                colmap_warning = (
+                    "OpenSfM completed without all binary interchange files; missing "
+                    + ", ".join(missing)
+                )
+        except JobCanceled:
+            raise
+        except Exception as exc:
+            # Nerfstudio does not consume this export. Its ODM data parser reads
+            # the calibrated OpenSfM reconstruction below, so an exporter bug
+            # must not discard an otherwise valid ODM reconstruction.
+            colmap_warning = str(exc)
+        if not colmap_export_available:
+            if colmap_export.exists():
+                shutil.rmtree(colmap_export)
+            warning = (
+                "Optional binary COLMAP interchange export failed; continuing "
+                f"with Nerfstudio's ODM converter. {colmap_warning or 'Unknown exporter error'}"
+            )
+            job["log"] = (job["log"] + [warning])[-200:]
+            job["log_count"] = int(job.get("log_count") or 0) + 1
+            set_state(job, 18, "COLMAP interchange unavailable; continuing with ODM cameras")
 
     # OpenSfM's Brown camera exports as COLMAP FULL_OPENCV, which Nerfstudio
-    # 1.1.5 cannot parse. Use Nerfstudio's supported ODM converter for training;
-    # retain the native binary COLMAP export above as a durable interchange
-    # product instead of weakening ODM's calibrated camera model.
+    # 1.1.5 cannot parse. Use Nerfstudio's supported ODM converter for training.
+    # When OpenSfM can also produce the native binary COLMAP files they remain
+    # in the durable work directory as an optional interchange product.
     odm_dataset = work / "odm_dataset"
     odm_dataset.mkdir(parents=True, exist_ok=True)
     odm_inputs = {
@@ -679,6 +707,10 @@ async def execute(job: dict[str, Any]) -> None:
             "source_coordinate_system": "ODM/OpenSfM local reconstruction",
             "odm_georeferencing": "../odm_georeferencing",
             "nerfstudio_dataparser_transform": transform,
+            "native_colmap_export": {
+                "available": colmap_export_available,
+                "path": str(colmap_export) if colmap_export_available else None,
+            },
             "note": "Apply this normalization metadata when relating the splat to ODM projected coordinates.",
         },
     )
@@ -707,12 +739,15 @@ async def run_command(
     )
     active_processes[job["id"]] = process
     assert process.stdout
+    command_output_tail: list[str] = []
 
     async def read_output() -> None:
         async for raw in process.stdout:
             line = raw.decode(errors="replace").strip()
             if not line:
                 continue
+            command_output_tail.append(line)
+            del command_output_tail[:-12]
             job["log"] = (job["log"] + [line])[-200:]
             job["log_count"] = int(job.get("log_count") or 0) + 1
             if training_steps:
@@ -752,7 +787,11 @@ async def run_command(
         active_processes.pop(job["id"], None)
     raise_if_canceled(job)
     if code:
-        raise RuntimeError(f"Command failed with exit code {code}: {' '.join(command[:3])}")
+        detail = " | ".join(line[:500] for line in command_output_tail)
+        suffix = f". Last output: {detail}" if detail else ""
+        raise RuntimeError(
+            f"Command failed with exit code {code}: {' '.join(command[:3])}{suffix}"
+        )
     set_state(job, progress_end, job["message"])
 
 

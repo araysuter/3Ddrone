@@ -940,6 +940,14 @@ button {
   letter-spacing: 0.1em;
 }
 
+.viewer-overlay {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  background: #080e13;
+}
+
 .viewer-toolbar {
   position: absolute;
   z-index: 3;

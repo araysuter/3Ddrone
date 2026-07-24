@@ -45,6 +45,7 @@ innosetup/
 data/
 frontend/node_modules/
 frontend/dist/
+frontend/public/draco/
 services/**/.venv/
 coverage/
 playwright-report/
