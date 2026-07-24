@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Artifact } from "../types";
-import { selectMeshArtifacts, selectPointCloudArtifact } from "./artifacts";
+import {
+  selectMeshArtifacts,
+  selectPointCloudArtifact,
+  selectSplatArtifacts,
+} from "./artifacts";
+import { ODM_LAZ_OPTIONS } from "./laz";
 
 function artifact(
   label: string,
@@ -38,6 +43,12 @@ describe("selectPointCloudArtifact", () => {
   });
 });
 
+describe("ODM_LAZ_OPTIONS", () => {
+  it("provides the chunk stride omitted by the direct LAZ-RS parser", () => {
+    expect(ODM_LAZ_OPTIONS.las.skip).toBe(1);
+  });
+});
+
 describe("selectMeshArtifacts", () => {
   it("prefers the textured OBJ and retains GLB as a fallback", () => {
     const obj = artifact("Textured terrain mesh OBJ", "mesh", "mesh");
@@ -56,6 +67,18 @@ describe("selectMeshArtifacts", () => {
     expect(selectMeshArtifacts([glb])).toEqual({
       primary: glb,
       fallback: undefined,
+    });
+  });
+});
+
+describe("selectSplatArtifacts", () => {
+  it("prefers compact SPZ and retains the Gaussian PLY as a fallback", () => {
+    const spz = artifact("Gaussian splat SPZ", "splat", "splat");
+    const ply = artifact("Gaussian splat PLY", "splat", "splat");
+
+    expect(selectSplatArtifacts([ply, spz])).toEqual({
+      primary: spz,
+      fallback: ply,
     });
   });
 });

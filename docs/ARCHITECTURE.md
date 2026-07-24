@@ -129,7 +129,8 @@ product.
   Rust/WASM worker decodes ODM's LAS/LAZ 1.4 output without blocking the UI.
 - Textured mesh: Three.js loads ODM's authoritative OBJ, MTL, and JPEG textures,
   with the Draco-compressed GLB or OGC 3D Tiles retained as fallbacks.
-- Gaussian splat: Spark 2.1 loads SPZ or PLY.
+- Gaussian splat: Spark 2.1 loads SPZ or PLY, reports streaming progress, and
+  fits the camera to the decoded Gaussian bounds after initialization.
 - Report: same-origin embedded PDF.
 - Elevation: raster sample in the project CRS using Rasterio.
 

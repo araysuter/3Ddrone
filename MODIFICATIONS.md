@@ -14,7 +14,9 @@ This repository combines OpenDroneMap with a local application layer. The follow
 - `frontend/`: React/Vite workstation UI and Nginx reverse proxy, including
   LAS/LAZ 1.4 decoding in a Rust/WASM background worker, authoritative ODM
   OBJ/MTL/JPEG texture loading, and the local Three.js Draco decoder retained
-  for ODM GLB fallback.
+  for ODM GLB fallback. Spark initialization is observed explicitly so splat
+  load progress, failures, and camera fitting are visible instead of producing
+  an unexplained blank canvas.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
 - `services/splat/`: best-effort native OpenSfM-to-COLMAP interchange export,
   Nerfstudio's supported ODM camera conversion, checkpoint-aware regular

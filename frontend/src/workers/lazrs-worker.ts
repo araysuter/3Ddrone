@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import { LAZRsLoader } from "@loaders.gl/las";
+import { ODM_LAZ_OPTIONS } from "../lib/laz";
 
 type NumericArray = Float32Array | Float64Array;
 
@@ -8,9 +9,7 @@ self.onmessage = async (event: MessageEvent<{ buffer: ArrayBuffer }>) => {
   try {
     // The Rust/WASM decoder supports LAS/LAZ 1.4, including point formats 6-10
     // produced by current ODM/PDAL builds.
-    const mesh = await LAZRsLoader.parse(event.data.buffer, {
-      las: { colorDepth: "auto", fp64: true },
-    });
+    const mesh = await LAZRsLoader.parse(event.data.buffer, ODM_LAZ_OPTIONS);
     const positionAttribute = mesh.attributes.POSITION;
     if (!positionAttribute || positionAttribute.size < 3) {
       throw new Error("The file does not contain XYZ positions.");

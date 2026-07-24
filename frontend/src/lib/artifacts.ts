@@ -30,3 +30,12 @@ export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
     fallback: obj ? glb : undefined,
   };
 }
+
+export function selectSplatArtifacts(artifacts: Artifact[] | undefined) {
+  const spz = findArtifact(artifacts, "splat", "SPZ");
+  const ply = findArtifact(artifacts, "splat", "PLY");
+  return {
+    primary: spz ?? ply,
+    fallback: spz ? ply : undefined,
+  };
+}

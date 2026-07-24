@@ -14,6 +14,7 @@ import {
   findArtifact,
   selectMeshArtifacts,
   selectPointCloudArtifact,
+  selectSplatArtifacts,
 } from "../lib/artifacts";
 import type { Artifact, Project } from "../types";
 
@@ -75,6 +76,7 @@ export function ResultsView({ project }: { project: Project }) {
     () => enabledElevationLayers[0] ?? "dsm",
   );
   const meshArtifacts = selectMeshArtifacts(project.artifacts);
+  const splatArtifacts = selectSplatArtifacts(project.artifacts);
   const stats = useMemo(
     () => [
       ["IMAGES", `${project.inspection.images ?? "—"}`],
@@ -180,10 +182,19 @@ export function ResultsView({ project }: { project: Project }) {
           {tab === "splat" && (
             <ArtifactState
               project={project}
-              artifact={find(project, "splat", "SPZ") ?? find(project, "splat", "PLY")}
+              artifact={splatArtifacts.primary}
               partialText="ODM products are safe. Retry only the Gaussian splat stage."
             >
-              {(artifact) => <SplatViewer url={downloadUrl(project, artifact)} />}
+              {(artifact) => (
+                <SplatViewer
+                  url={downloadUrl(project, artifact)}
+                  fallbackUrl={
+                    splatArtifacts.fallback
+                      ? downloadUrl(project, splatArtifacts.fallback)
+                      : undefined
+                  }
+                />
+              )}
             </ArtifactState>
           )}
           {tab === "elevation" && (
