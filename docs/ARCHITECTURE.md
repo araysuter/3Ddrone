@@ -14,7 +14,7 @@ The API owns project state. NodeODM remains authoritative for ODM task progress 
 source/<project UUID>/       Validated originals and support files
 nodeodm/<task UUID>/         NodeODM-owned durable task state
 splat/jobs/                  Durable splat job records
-splat/work/<project UUID>/   COLMAP export, checkpoints, and recovery state
+splat/work/<project UUID>/   COLMAP export, ODM conversion, checkpoints, and recovery state
 metadata/mapper.sqlite3      Users, sessions, projects, uploads, and SSE events
 metadata/projects/<UUID>/    Extracted allowlisted artifacts and all.zip
 logs/nodeodm/                NodeODM logs
@@ -43,7 +43,7 @@ stateDiagram-v2
 
 There is one API job-runner task and NodeODM is configured with `parallelQueueProcessing=1`. The runner waits for ODM completion before it submits a splat job, so the two GPU-heavy workloads cannot overlap.
 
-On API restart, queued, processing, or splatting projects are reconciled. Existing NodeODM UUIDs are polled instead of re-uploaded. The splat worker changes an interrupted `running` job back to `queued`, reuses the OpenSfM/COLMAP conversion, and resumes from the newest Nerfstudio config/checkpoint when one exists.
+On API restart, queued, processing, or splatting projects are reconciled. Existing NodeODM UUIDs are polled instead of re-uploaded. The splat worker changes an interrupted `running` job back to `queued`, reuses the OpenSfM/COLMAP and ODM-to-Nerfstudio conversions, and resumes from the newest Nerfstudio config/checkpoint when one exists.
 
 ## Intake
 

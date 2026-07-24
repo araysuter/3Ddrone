@@ -42,10 +42,22 @@ RUN /usr/bin/python3 -m venv /opt/splat-venv \
     && /opt/splat-venv/bin/python -c \
         "import gsplat, nerfstudio, torch; assert torch.__version__.startswith('2.4.1'); assert torch.version.cuda == '12.4'; print('splat stack', torch.__version__, torch.version.cuda)"
 
-# Spark's MIT-licensed compressor produces the web-ready SPZ derivative.
+# Spark's MIT-licensed compressor produces the web-ready SPZ derivative. Its
+# repository package.json contains development-only file dependencies generated
+# by the Rust/WASM build, so a repository-level `npm install` cannot work from
+# the release tag. Install only the two dependencies used by the committed
+# JavaScript distribution and verify that the compressor can load.
 RUN git clone --branch v2.1.0 --depth 1 https://github.com/sparkjsdev/spark.git /opt/spark \
-    && cd /opt/spark \
-    && npm install
+    && npm install \
+        --prefix /opt/spark-runtime \
+        --ignore-scripts \
+        --no-audit \
+        --no-fund \
+        --package-lock=false \
+        fflate@0.8.2 \
+        three@0.180.0 \
+    && ln -s /opt/spark-runtime/node_modules /opt/spark/node_modules \
+    && node /opt/spark/scripts/compress-to-spz.js --help >/dev/null
 
 COPY services/splat/app.py /app/app.py
 ENV PATH="/opt/splat-venv/bin:/usr/local/cuda-12.4/bin:/code/venv/bin:$PATH" \

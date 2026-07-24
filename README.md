@@ -25,9 +25,14 @@ flowchart LR
     O --> M["Unmodified ODM 3.6.0 GPU engine"]
     A --> S["Splat worker"]
     S --> C["OpenSfM export_colmap"]
-    C --> G["Nerfstudio Splatfacto + gsplat"]
+    S --> D["Nerfstudio ODM converter"]
+    D --> G["Nerfstudio Splatfacto + gsplat"]
     G --> P["PLY + Spark SPZ + scene transform"]
 ```
+
+The native binary COLMAP export is retained as an interchange product. Training
+uses Nerfstudio's ODM converter because OpenSfM's calibrated Brown camera model
+exports as `FULL_OPENCV`, which Nerfstudio 1.1.5's COLMAP parser does not support.
 
 ## Target host
 

@@ -13,7 +13,7 @@ This repository combines OpenDroneMap with a local application layer. The follow
 
 - `frontend/`: React/Vite workstation UI and Nginx reverse proxy.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
-- `services/splat/`: OpenSfM-to-COLMAP conversion, checkpoint-aware regular Splatfacto training, PLY export, Spark SPZ compression, and scene-transform retention.
+- `services/splat/`: native OpenSfM-to-COLMAP export, Nerfstudio's supported ODM camera conversion, checkpoint-aware regular Splatfacto training, PLY export, Spark SPZ compression, and scene-transform retention. The worker installs only Spark's pinned runtime dependencies because Spark's repository-level install expects generated Rust/WASM development packages that are not committed in the release tag.
 - `compose.yaml`: local-only four-service deployment and GPU device 0 reservations.
 - `docs/`, `scripts/`, tests, build helpers, and operator configuration.
 

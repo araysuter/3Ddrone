@@ -46,6 +46,7 @@ Inspect NodeODM output and pass only if:
 - CPU/RAM-bound stages remain labeled as such; the UI must not imply full-pipeline CUDA.
 - Orthomosaic, LAZ/EPT/COPC, OBJ/GLB/3D Tiles, DSM, DTM, PDF report, logs/raw outputs, and `all.zip` are present.
 - `opensfm export_colmap --binary` succeeds from the packaged OpenSfM reconstruction.
+- Nerfstudio's `ns-process-data odm` conversion succeeds without replacing ODM's calibrated Brown camera model with a weaker model.
 - Regular Splatfacto stays within the 8 GB VRAM envelope.
 - PLY renders in Spark, SPZ compression succeeds, and `scene_transform.json` is retained.
 

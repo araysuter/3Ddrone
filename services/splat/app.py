@@ -198,8 +198,9 @@ async def execute(job: dict[str, Any]) -> None:
     if not images_link.exists():
         images_link.symlink_to(source, target_is_directory=True)
 
-    colmap = osfm_dataset / "colmap_export"
-    if not (colmap / "sparse").exists():
+    colmap_export = osfm_dataset / "colmap_export"
+    colmap_files = ("cameras.bin", "images.bin", "points3D.bin")
+    if not all((colmap_export / name).is_file() for name in colmap_files):
         set_state(job, 12, "Exporting OpenSfM cameras to binary COLMAP")
         await run_command(
             job,
@@ -212,8 +213,57 @@ async def execute(job: dict[str, Any]) -> None:
             progress_start=12,
             progress_end=18,
         )
-    if not colmap.exists():
-        raise RuntimeError("OpenSfM did not produce a COLMAP export")
+    missing_colmap = [name for name in colmap_files if not (colmap_export / name).is_file()]
+    if missing_colmap:
+        raise RuntimeError(
+            "OpenSfM COLMAP export is incomplete; missing " + ", ".join(missing_colmap)
+        )
+
+    # OpenSfM's Brown camera exports as COLMAP FULL_OPENCV, which Nerfstudio
+    # 1.1.5 cannot parse. Use Nerfstudio's supported ODM converter for training;
+    # retain the native binary COLMAP export above as a durable interchange
+    # product instead of weakening ODM's calibrated camera model.
+    odm_dataset = work / "odm_dataset"
+    odm_dataset.mkdir(parents=True, exist_ok=True)
+    odm_inputs = {
+        "cameras.json": dataset / "cameras.json",
+        "odm_report": dataset / "odm_report",
+        "opensfm": osfm_dataset,
+        "images": source,
+    }
+    missing_odm = [name for name, path in odm_inputs.items() if not path.exists()]
+    if missing_odm:
+        raise RuntimeError(
+            "ODM-to-Nerfstudio conversion inputs are incomplete; missing " + ", ".join(missing_odm)
+        )
+    for name, source_path in odm_inputs.items():
+        link = odm_dataset / name
+        if not link.exists():
+            link.symlink_to(source_path, target_is_directory=source_path.is_dir())
+
+    training_dataset = work / "nerfstudio_dataset"
+    transforms = training_dataset / "transforms.json"
+    if not transforms.is_file():
+        set_state(job, 19, "Converting ODM cameras for Nerfstudio")
+        await run_command(
+            job,
+            [
+                "ns-process-data",
+                "odm",
+                "--data",
+                str(odm_dataset),
+                "--output-dir",
+                str(training_dataset),
+                "--num-downscales",
+                "0",
+                "--max-dataset-size",
+                "-1",
+            ],
+            progress_start=19,
+            progress_end=24,
+        )
+    if not transforms.is_file():
+        raise RuntimeError("Nerfstudio's ODM converter did not produce transforms.json")
 
     training_root = work / "nerfstudio"
     checkpoints = sorted(
@@ -232,7 +282,7 @@ async def execute(job: dict[str, Any]) -> None:
         "ns-train",
         "splatfacto",
         "--data",
-        str(colmap),
+        str(training_dataset),
         "--output-dir",
         str(training_root),
         "--experiment-name",
@@ -279,14 +329,13 @@ async def execute(job: dict[str, Any]) -> None:
         ply.replace(canonical_ply)
 
     set_state(job, 96, "Compressing web-ready SPZ")
-    compress_command = ["npm", "run", "assets:compress", "--"]
+    compress_command = ["node", "/opt/spark/scripts/compress-to-spz.js"]
     if job["quality_culling"]:
         compress_command.extend(["--filter-opacity", "0.01"])
     compress_command.append(str(canonical_ply))
     await run_command(
         job,
         compress_command,
-        cwd=Path("/opt/spark"),
         progress_start=96,
         progress_end=99,
     )

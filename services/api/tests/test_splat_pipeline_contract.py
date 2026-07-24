@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import json
+from pathlib import Path
+
+
+SPLAT_APP = Path(__file__).resolve().parents[2] / "splat" / "app.py"
+SPEC = importlib.util.spec_from_file_location("splat_worker_app", SPLAT_APP)
+assert SPEC and SPEC.loader
+splat_app = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(splat_app)
+
+
+def test_splat_pipeline_uses_supported_odm_and_spark_paths(tmp_path, monkeypatch) -> None:
+    dataset = tmp_path / "artifacts"
+    opensfm = dataset / "opensfm"
+    report = dataset / "odm_report"
+    source = tmp_path / "source"
+    output = dataset / "splat"
+    opensfm.mkdir(parents=True)
+    report.mkdir()
+    source.mkdir()
+    (opensfm / "reconstruction.json").write_text("[{}]")
+    (dataset / "cameras.json").write_text("{}")
+    (report / "shots.geojson").write_text("{}")
+    (source / "DJI_0001.JPG").write_bytes(b"image")
+
+    commands: list[list[str]] = []
+
+    async def fake_run_command(job, command, **kwargs) -> None:
+        commands.append(command)
+        if "export_colmap" in command:
+            export = tmp_path / "state" / "work" / "project-1" / "dataset" / "colmap_export"
+            export.mkdir(parents=True)
+            for name in ("cameras.bin", "images.bin", "points3D.bin"):
+                (export / name).write_bytes(b"colmap")
+        elif command[:2] == ["ns-process-data", "odm"]:
+            converted = Path(command[command.index("--output-dir") + 1])
+            converted.mkdir(parents=True)
+            (converted / "transforms.json").write_text('{"frames": []}')
+        elif command[:2] == ["ns-train", "splatfacto"]:
+            training = Path(command[command.index("--output-dir") + 1])
+            config = training / "odm-splat" / "run" / "config.yml"
+            config.parent.mkdir(parents=True)
+            config.write_text("pipeline: test")
+        elif command[:2] == ["ns-export", "gaussian-splat"]:
+            export = Path(command[command.index("--output-dir") + 1])
+            export.mkdir(parents=True, exist_ok=True)
+            (export / "splat.ply").write_text("ply")
+        elif command[:2] == ["node", "/opt/spark/scripts/compress-to-spz.js"]:
+            Path(command[-1]).with_suffix(".spz").write_bytes(b"spz")
+
+    monkeypatch.setattr(splat_app, "STATE_ROOT", tmp_path / "state")
+    monkeypatch.setattr(splat_app, "DRY_RUN", False)
+    monkeypatch.setattr(splat_app, "run_command", fake_run_command)
+
+    job = {
+        "id": "job-1",
+        "project_id": "project-1",
+        "dataset": str(dataset),
+        "source": str(source),
+        "output": str(output),
+        "downscale": 2,
+        "steps": 100,
+        "quality_culling": False,
+        "status": "queued",
+        "progress": 0,
+        "message": "",
+        "error": None,
+        "log": [],
+    }
+
+    asyncio.run(splat_app.execute(job))
+
+    assert job["status"] == "completed"
+    assert (output / "point_cloud.ply").is_file()
+    assert (output / "scene.spz").read_bytes() == b"spz"
+    assert json.loads((output / "scene_transform.json").read_text())["version"] == 1
+
+    colmap_command = next(command for command in commands if "export_colmap" in command)
+    assert "--binary" in colmap_command
+
+    convert_command = next(command for command in commands if command[:2] == ["ns-process-data", "odm"])
+    assert convert_command[convert_command.index("--num-downscales") + 1] == "0"
+    assert convert_command[convert_command.index("--max-dataset-size") + 1] == "-1"
+
+    train_command = next(command for command in commands if command[:2] == ["ns-train", "splatfacto"])
+    assert Path(train_command[train_command.index("--data") + 1]).name == "nerfstudio_dataset"
+    assert train_command[train_command.index("--pipeline.datamanager.camera-res-scale-factor") + 1] == "0.5"
+
+    compress_command = next(command for command in commands if command[0] == "node")
+    assert compress_command[:2] == ["node", "/opt/spark/scripts/compress-to-spz.js"]
+    assert all(command[0] != "npm" for command in commands)
