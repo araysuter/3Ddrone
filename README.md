@@ -37,7 +37,10 @@ flowchart LR
 - Current NVIDIA driver and NVIDIA Container Toolkit
 - SSD space sized for source data plus multiple dense reconstructions
 
-The pinned upstream ODM GPU Dockerfile currently builds on CUDA 13.0. Confirm the installed driver supports that runtime before starting the long build.
+The ODM GPU image is pinned to CUDA 12.9.1 because OpenMVS in ODM 3.6.0 is not
+compatible with the CUDA 13 header removals. A newer host driver is supported:
+the NVIDIA driver only needs to be new enough to run the container's CUDA
+12.9.1 runtime.
 
 ## Install
 

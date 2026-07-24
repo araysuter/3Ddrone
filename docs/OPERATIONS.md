@@ -6,7 +6,7 @@ Use Ubuntu 24.04 with Docker Engine and Compose v2, an NVIDIA driver compatible 
 
 ```bash
 nvidia-smi
-docker run --rm --gpus '"device=0"' nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
+docker run --rm --gpus '"device=0"' nvidia/cuda:12.9.1-base-ubuntu24.04 nvidia-smi
 ```
 
 The first ODM and Splatfacto image builds are large and can take a long time. Keep at least 10 GB of host RAM free for Ubuntu and application services. The API derives ODM concurrency from image megapixels, logical cores, and the remaining memory.
