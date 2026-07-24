@@ -50,7 +50,12 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
 
 ## Install
 
-1. Install Docker Engine, the current NVIDIA driver, and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+1. Install Docker Engine, the current NVIDIA driver, and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Enable the NVIDIA persistence daemon used by the container runtime:
+
+   ```bash
+   sudo systemctl enable --now nvidia-persistenced
+   sudo systemctl restart docker
+   ```
 2. Clone this repository with submodules, which ODM itself uses:
 
    ```bash
@@ -74,6 +79,7 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
 
    ```bash
    make build
+   make host-check
    make up
    ```
 

@@ -1,10 +1,13 @@
-.PHONY: build up down logs demo gpu-smoke test
+.PHONY: build host-check up down logs demo gpu-smoke test
 
 build:
 	docker compose --profile build-only build odm-gpu
 	docker compose build nodeodm splat-worker api frontend
 
-up:
+host-check:
+	./scripts/check-host.sh
+
+up: host-check
 	docker compose up -d
 
 down:
