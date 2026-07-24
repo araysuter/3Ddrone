@@ -86,6 +86,20 @@ def test_manifest_discovers_current_odm_3d_tiles_layout(tmp_path):
     }
 
 
+def test_manifest_uses_terrain_mesh_when_full_3d_mesh_is_unavailable(tmp_path):
+    root = artifacts_root("terrain-mesh-test")
+    terrain = root / "odm_texturing_25d" / "odm_textured_model_geo.glb"
+    terrain.parent.mkdir(parents=True)
+    terrain.write_bytes(b"glTF")
+
+    items = manifest("terrain-mesh-test")
+
+    assert len(items) == 1
+    assert items[0]["label"] == "Textured terrain mesh GLB"
+    assert items[0]["path"] == "artifacts/odm_texturing_25d/odm_textured_model_geo.glb"
+    assert artifact_path_allowed("terrain-mesh-test", items[0]["path"])
+
+
 def test_sse_events_are_durable_and_ordered(authenticated):
     client, csrf = authenticated
     response = client.post(

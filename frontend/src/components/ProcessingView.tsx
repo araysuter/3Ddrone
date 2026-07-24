@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Check,
   Circle,
   Cpu,
@@ -38,6 +39,16 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
     project.status === "uploading" && uploadProgress !== undefined
       ? Math.round(uploadProgress * 100)
       : Math.round(project.progress);
+  const completedStages = stages.filter(([, threshold]) => project.progress >= threshold).length;
+  const processingStage =
+    project.status === "processing" || project.status === "splatting"
+      ? stages.findIndex(([, threshold]) => project.progress < threshold)
+      : -1;
+  const failedStage =
+    project.status === "failed"
+      ? stages.findIndex(([label]) => project.stage.toLowerCase().includes(label.toLowerCase()))
+      : -1;
+  const activeStage = failedStage >= 0 ? failedStage : processingStage;
   const elapsed = (() => {
     const seconds = Math.max(0, (Date.now() - new Date(project.created_at).getTime()) / 1000);
     if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -73,18 +84,23 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
         <section className="stage-panel">
           <header className="panel-header">
             <strong>PIPELINE</strong>
-            <span>{stages.filter(([, threshold]) => project.progress >= threshold).length}/{stages.length}</span>
+            <span>{completedStages}/{stages.length}</span>
           </header>
           <div className="stage-list">
             {stages.map(([label, threshold], index) => {
               const done = project.progress >= threshold;
-              const nextThreshold = stages[index + 1]?.[1] ?? 101;
-              const active = project.progress >= threshold - 8 && project.progress < nextThreshold;
+              const active = index === activeStage;
+              const failed = index === failedStage;
               return (
-                <div className={`stage-row ${done ? "done" : ""} ${active ? "active" : ""}`} key={label}>
+                <div
+                  className={`stage-row ${done ? "done" : ""} ${active ? "active" : ""} ${failed ? "failed" : ""}`}
+                  key={label}
+                >
                   <span className="stage-icon">
                     {done ? (
                       <Check size={13} />
+                    ) : failed ? (
+                      <AlertTriangle size={13} />
                     ) : active ? (
                       <LoaderCircle className="spin" size={13} />
                     ) : (
@@ -93,9 +109,11 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
                   </span>
                   <span>
                     <strong>{label}</strong>
-                    <small>{done ? "Complete" : active ? "In progress" : "Waiting"}</small>
+                    <small>
+                      {done ? "Complete" : failed ? "Failed" : active ? "In progress" : "Waiting"}
+                    </small>
                   </span>
-                  {active && <em>{Math.round(project.progress)}%</em>}
+                  {active && !failed && <em>{Math.round(project.progress)}%</em>}
                 </div>
               );
             })}

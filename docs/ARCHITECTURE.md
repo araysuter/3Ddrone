@@ -64,7 +64,10 @@ Before uploading, the API reserves a UUID and sends it through NodeODM's
 standard `Set-UUID` field. This makes a lost commit response recoverable: the
 same durable UUID is polled rather than creating an ambiguous duplicate task.
 Uncommitted temporary uploads are safe to retry and are eventually removed by
-NodeODM.
+NodeODM. NodeODM's initialize endpoint accepts its fields as
+`multipart/form-data`; immediately after commit, the API compares every
+requested option with the effective task options and cancels the task if any
+setting was silently dropped or changed.
 
 On API restart, queued, processing, or splatting projects are reconciled.
 Existing NodeODM UUIDs are polled instead of re-uploaded. Transient NodeODM and
@@ -74,6 +77,14 @@ reuses the OpenSfM/COLMAP and ODM-to-Nerfstudio conversions, and resumes from
 the newest Nerfstudio config/checkpoint when one exists. Final splat products
 are validated, fsynced, and atomically published so an interrupted export
 cannot replace a prior good result with a partial one.
+
+If OpenMVS fails while cleaning ODM's full 3D Poisson mesh, the orchestrator
+uses NodeODM's standard restart API once with `skip-3dmodel`. ODM reuses its
+completed reconstruction and produces the normal 2.5D textured terrain mesh,
+orthophoto, elevation, point-cloud, report, and camera outputs. The terrain OBJ
+and GLB are packaged and exposed under their actual `odm_texturing_25d` paths.
+Any second mesh failure remains a failed project rather than entering a retry
+loop.
 
 ## Intake
 

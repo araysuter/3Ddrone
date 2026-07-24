@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 
 from app import jobs, main
 from app.db import one, transaction, update_project, utcnow
-from app.nodeodm import NodeODMClient, NodeODMError
+from app.nodeodm import NodeODMClient, NodeODMError, option_mismatches
 
 
 def test_nodeodm_image_reuses_an_existing_numeric_runtime_identity():
@@ -121,6 +122,210 @@ async def test_nodeodm_commit_response_loss_keeps_reserved_task_for_recovery(mon
         await client.create_task("Recovery", [], [], task_uuid)
 
     assert calls == ["/task/new/init", f"/task/new/commit/{task_uuid}"]
+
+
+@pytest.mark.asyncio
+async def test_nodeodm_init_sends_multipart_fields_and_verifies_effective_options(monkeypatch):
+    client = NodeODMClient()
+    task_uuid = "00000000-0000-4000-8000-000000000023"
+    options = [
+        {"name": "feature-quality", "value": "ultra"},
+        {"name": "rolling-shutter", "value": True},
+        {"name": "orthophoto-resolution", "value": 2.5},
+    ]
+    init_kwargs = {}
+
+    async def fake_json(_method, path, **kwargs):
+        if path == "/task/new/init":
+            init_kwargs.update(kwargs)
+            return {"uuid": task_uuid}
+        if path == f"/task/new/commit/{task_uuid}":
+            return {"uuid": task_uuid}
+        if path == f"/task/{task_uuid}/info":
+            return {"status": {"code": 10}, "options": options}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(client, "_json", fake_json)
+
+    assert await client.create_task("High FC330", [], options, task_uuid) == task_uuid
+    assert "data" not in init_kwargs
+    assert init_kwargs["files"]["name"] == (None, "High FC330")
+    assert json.loads(init_kwargs["files"]["options"][1]) == options
+    assert init_kwargs["headers"] == {"Set-UUID": task_uuid}
+
+
+@pytest.mark.asyncio
+async def test_nodeodm_cancels_task_when_effective_options_do_not_match(monkeypatch):
+    client = NodeODMClient()
+    task_uuid = "00000000-0000-4000-8000-000000000024"
+    calls: list[str] = []
+    options = [{"name": "rolling-shutter", "value": True}]
+
+    async def fake_json(_method, path, **_kwargs):
+        calls.append(path)
+        if path in {"/task/new/init", f"/task/new/commit/{task_uuid}"}:
+            return {"uuid": task_uuid}
+        if path == f"/task/{task_uuid}/info":
+            return {"status": {"code": 10}, "options": []}
+        if path == "/task/cancel":
+            return {}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(client, "_json", fake_json)
+
+    with pytest.raises(NodeODMError, match="rolling-shutter"):
+        await client.create_task("Mismatch", [], options, task_uuid)
+
+    assert calls[-1] == "/task/cancel"
+
+
+@pytest.mark.asyncio
+async def test_nodeodm_restart_verifies_recovery_options(monkeypatch):
+    client = NodeODMClient()
+    task_uuid = "00000000-0000-4000-8000-000000000025"
+    options = [{"name": "skip-3dmodel", "value": True}]
+    restart_data = {}
+
+    async def fake_json(_method, path, **kwargs):
+        if path == "/task/restart":
+            restart_data.update(kwargs["data"])
+            return {}
+        if path == f"/task/{task_uuid}/info":
+            return {"status": {"code": 10}, "options": options}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(client, "_json", fake_json)
+
+    await client.restart(task_uuid, options)
+
+    assert restart_data["uuid"] == task_uuid
+    assert json.loads(restart_data["options"]) == options
+
+
+def test_nodeodm_option_comparison_accepts_equivalent_numeric_values():
+    assert option_mismatches(
+        [{"name": "mesh-size", "value": 500000}],
+        [{"name": "mesh-size", "value": 500000.0}],
+    ) == []
+    assert option_mismatches(
+        [{"name": "rolling-shutter", "value": True}],
+        [{"name": "rolling-shutter", "value": 1}],
+    ) == ["rolling-shutter (expected True, got 1)"]
+
+
+def test_full_mesh_failure_is_detected_and_fallback_disables_only_full_3d_mesh():
+    lines = [
+        'ReconstructMesh -i "/data/odm_meshing/odm_mesh_dirty.ply"',
+        'File "/code/stages/odm_meshing.py", line 25, in process',
+        "SubprocessException: Child returned 1",
+    ]
+    assert jobs.is_recoverable_full_mesh_failure(lines)
+    fallback = jobs.terrain_mesh_fallback_options(
+        [
+            {"name": "gltf", "value": True},
+            {"name": "3d-tiles", "value": True},
+            {"name": "use-3dmesh", "value": True},
+        ]
+    )
+    assert {"name": "skip-3dmodel", "value": True} in fallback
+    assert {"name": "use-3dmesh", "value": True} not in fallback
+    assert {"name": "gltf", "value": True} in fallback
+    assert {"name": "3d-tiles", "value": True} in fallback
+
+
+@pytest.mark.asyncio
+async def test_failed_full_mesh_restarts_same_task_once_with_terrain_fallback(
+    monkeypatch,
+):
+    project_id = "00000000-0000-4000-8000-000000000026"
+    now = utcnow()
+    outputs = {
+        "orthomosaic": True,
+        "point_cloud": True,
+        "mesh": True,
+        "dsm": True,
+        "dtm": True,
+        "report": True,
+        "raw": True,
+        "splat": False,
+    }
+    with transaction() as db:
+        db.execute(
+            """
+            INSERT INTO projects(
+              id,name,preset,status,stage,progress,outputs_json,advanced_json,
+              inspection_json,nodeodm_uuid,created_at,updated_at
+            ) VALUES(?,?,?,'processing','Meshing and texturing',60,?,?,?, ?,?,?)
+            """,
+            (
+                project_id,
+                "Terrain recovery",
+                "standard",
+                json.dumps(outputs),
+                "{}",
+                json.dumps(
+                    {
+                        "camera_model": "FC330",
+                        "megapixels": 12,
+                        "host_ram_gb": 48,
+                    }
+                ),
+                "durable-task",
+                now,
+                now,
+            ),
+        )
+
+    failure_lines = [
+        'ReconstructMesh -i "/data/odm_meshing/odm_mesh_dirty.ply"',
+        'File "/code/stages/odm_meshing.py", line 25, in process',
+        "SubprocessException: Child returned 1",
+    ]
+
+    class FakeNodeODM:
+        def __init__(self):
+            self.recovery_options = None
+            self.recovered = False
+
+        async def task_info(self, _task_uuid):
+            return {"status": {"code": 20}, "options": []}
+
+        async def wait_for_terminal(self, _task_uuid):
+            if not self.recovered:
+                yield {
+                    "status": {"code": 30, "errorMessage": "Cannot process dataset"},
+                    "progress": 100,
+                    "options": [],
+                }
+            else:
+                yield {
+                    "status": {"code": 40},
+                    "progress": 100,
+                    "options": self.recovery_options,
+                }
+
+        async def output(self, _task_uuid, _line):
+            return ["Terrain recovery completed"] if self.recovered else failure_lines
+
+        async def restart(self, _task_uuid, options):
+            self.recovery_options = options
+            self.recovered = True
+
+        async def download_all(self, _task_uuid, destination):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"placeholder")
+
+    fake = FakeNodeODM()
+    monkeypatch.setattr(jobs, "settings", replace(jobs.settings, demo_mode=False))
+    monkeypatch.setattr(jobs, "NodeODMClient", lambda: fake)
+    monkeypatch.setattr(jobs, "install_nodeodm_archive", lambda *_args: None)
+
+    await jobs.process_project(jobs.decode_project(one("SELECT * FROM projects WHERE id=?", (project_id,))))
+
+    project = one("SELECT * FROM projects WHERE id=?", (project_id,))
+    assert project["status"] == "completed"
+    assert project["nodeodm_uuid"] == "durable-task"
+    assert {"name": "skip-3dmodel", "value": True} in fake.recovery_options
 
 
 def test_source_file_list_fails_closed_when_validated_data_disappears():

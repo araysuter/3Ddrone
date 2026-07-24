@@ -42,6 +42,39 @@ def stage_for_progress(progress: float) -> str:
     return stage
 
 
+def _option_enabled(options: Any, name: str) -> bool:
+    if not isinstance(options, list):
+        return False
+    return any(
+        isinstance(option, dict)
+        and option.get("name") == name
+        and option.get("value") is True
+        for option in options
+    )
+
+
+def terrain_mesh_fallback_options(
+    options: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        option for option in options if option.get("name") not in {"skip-3dmodel", "use-3dmesh"}
+    ] + [{"name": "skip-3dmodel", "value": True}]
+
+
+def is_recoverable_full_mesh_failure(lines: list[str]) -> bool:
+    text = "\n".join(lines).lower()
+    mesh_context = any(
+        marker in text
+        for marker in (
+            "screened_poisson_reconstruction",
+            "odm_mesh.dirty",
+            "odm_mesh_dirty",
+            "stages/odm_meshing.py",
+        )
+    )
+    return mesh_context and ("reconstructmesh" in text or "opendm/mesh.py" in text)
+
+
 def notify_runner() -> None:
     if _wake is not None:
         _wake.set()
@@ -172,52 +205,150 @@ async def process_project(project: dict[str, Any]) -> None:
             # a restart can reconnect to that exact task instead of submitting
             # a second GPU job. A confirmed "not found" is reset above.
             raise
+        accepted = {option["name"]: option["value"] for option in options}
+        emit_event(
+            project_id,
+            "log",
+            {
+                "lines": [
+                    "[mapper] NodeODM accepted requested settings: "
+                    f"preset={project['preset']}, "
+                    f"feature-quality={accepted.get('feature-quality')}, "
+                    f"pc-quality={accepted.get('pc-quality')}, "
+                    f"rolling-shutter={accepted.get('rolling-shutter', False)}, "
+                    f"rolling-shutter-readout={accepted.get('rolling-shutter-readout', 0)}ms."
+                ]
+            },
+        )
         update_project(project_id, nodeodm_uuid=task_uuid, nodeodm_output_line=0, progress=5)
         project["nodeodm_uuid"] = task_uuid
         project["nodeodm_output_line"] = 0
 
     task_uuid = project["nodeodm_uuid"]
     last_output = int(project.get("nodeodm_output_line") or 0)
-    cancel_sent = False
-    cancel_failures = 0
-    async for info in client.wait_for_terminal(task_uuid):
-        current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
-        if current and current["cancel_requested"] and not cancel_sent:
+    while True:
+        cancel_sent = False
+        cancel_failures = 0
+        terminal_info: dict[str, Any] | None = None
+        async for info in client.wait_for_terminal(task_uuid):
+            terminal_info = info
+            current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+            if current and current["cancel_requested"] and not cancel_sent:
+                try:
+                    await client.cancel(task_uuid)
+                    cancel_sent = True
+                    cancel_failures = 0
+                except (httpx.HTTPError, NodeODMError):
+                    cancel_failures += 1
+                    if cancel_failures >= 10:
+                        raise
+            code = int(info["status"]["code"])
+            if code not in {30, 50}:
+                node_progress = float(info.get("progress") or 0)
+                if node_progress <= 1:
+                    node_progress *= 100
+                progress = min(92.0, max(5.0, 5.0 + node_progress * 0.87))
+                stage = stage_for_progress(progress)
+                update_project(project_id, status="processing", stage=stage, progress=progress)
             try:
-                await client.cancel(task_uuid)
-                cancel_sent = True
-                cancel_failures = 0
-            except (httpx.HTTPError, NodeODMError):
-                cancel_failures += 1
-                if cancel_failures >= 10:
-                    raise
-        node_progress = float(info.get("progress") or 0)
-        if node_progress <= 1:
-            node_progress *= 100
-        progress = min(92.0, max(5.0, 5.0 + node_progress * 0.87))
-        stage = stage_for_progress(progress)
-        update_project(project_id, status="processing", stage=stage, progress=progress)
-        try:
-            output = await client.output(task_uuid, last_output)
-        except Exception:
-            output = []
-        if output:
-            last_output += len(output)
-            update_project(project_id, nodeodm_output_line=last_output)
-            safe_output = [line[:16_384] for line in output]
-            for offset in range(0, len(safe_output), 100):
-                emit_event(project_id, "log", {"lines": safe_output[offset : offset + 100]})
-        emit_event(project_id, "progress", {"progress": progress, "stage": stage})
-        code = int(info["status"]["code"])
-        if code == 50:
-            update_project(project_id, status="canceled", stage="Canceled")
-            emit_event(project_id, "state", {"status": "canceled"})
-            return
-        if code == 30:
-            message = info["status"].get("errorMessage") or "NodeODM processing failed"
-            raise RuntimeError(message)
+                output = await client.output(task_uuid, last_output)
+            except Exception:
+                output = []
+            if output:
+                last_output += len(output)
+                update_project(project_id, nodeodm_output_line=last_output)
+                safe_output = [line[:16_384] for line in output]
+                for offset in range(0, len(safe_output), 100):
+                    emit_event(project_id, "log", {"lines": safe_output[offset : offset + 100]})
+            if code not in {30, 50}:
+                emit_event(project_id, "progress", {"progress": progress, "stage": stage})
+            if code == 50:
+                update_project(project_id, status="canceled", stage="Canceled")
+                emit_event(project_id, "state", {"status": "canceled"})
+                return
+
+        if terminal_info is None:
+            raise RuntimeError("NodeODM stopped polling without a terminal status")
+        code = int(terminal_info["status"]["code"])
         if code == 40:
             break
+        if code != 30:
+            raise RuntimeError(f"NodeODM returned unexpected terminal status {code}")
+
+        try:
+            failure_tail = await client.output(task_uuid, max(0, last_output - 300))
+        except Exception:
+            failure_tail = []
+        can_recover_mesh = (
+            project["outputs"].get("mesh", False)
+            and is_recoverable_full_mesh_failure(failure_tail)
+            and not _option_enabled(terminal_info.get("options"), "skip-3dmodel")
+        )
+        if can_recover_mesh:
+            options = resolve_odm_options(
+                project["preset"],
+                project["outputs"],
+                project["inspection"],
+                project["advanced"],
+            )
+            fallback_options = terrain_mesh_fallback_options(options)
+            recovery_message = (
+                "[mapper] Full 3D mesh cleanup failed. Retrying the same durable ODM task "
+                "with its 2.5D terrain mesh; completed reconstruction work will be reused."
+            )
+            emit_event(project_id, "log", {"lines": [recovery_message]})
+            update_project(
+                project_id,
+                status="processing",
+                stage="Recovering with 2.5D terrain mesh",
+                progress=50,
+                nodeodm_output_line=0,
+                error=None,
+            )
+            emit_event(
+                project_id,
+                "state",
+                {
+                    "status": "processing",
+                    "stage": "Recovering with 2.5D terrain mesh",
+                    "progress": 50,
+                },
+            )
+            await client.restart(task_uuid, fallback_options)
+            last_output = 0
+            continue
+
+        message = terminal_info["status"].get("errorMessage") or "NodeODM processing failed"
+        if is_recoverable_full_mesh_failure(failure_tail):
+            message = (
+                "ODM failed during mesh generation, including the automatic 2.5D terrain-mesh "
+                f"recovery: {message}"
+            )
+            failed_stage = "ODM failed — Meshing and texturing"
+            failed_progress = 64
+        else:
+            failed_stage = "ODM processing failed"
+            failed_progress = min(91, float(one(
+                "SELECT progress FROM projects WHERE id=?", (project_id,)
+            )["progress"]))
+        update_project(
+            project_id,
+            status="failed",
+            stage=failed_stage,
+            progress=failed_progress,
+            error=message,
+        )
+        emit_event(
+            project_id,
+            "state",
+            {
+                "status": "failed",
+                "stage": failed_stage,
+                "progress": failed_progress,
+                "error": message,
+            },
+        )
+        return
 
     current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
     if current and current["cancel_requested"]:

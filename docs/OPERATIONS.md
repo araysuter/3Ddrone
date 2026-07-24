@@ -126,7 +126,15 @@ Restore the entire configured data directory, not just `mapper.sqlite3`; databas
 - NodeODM restart: its task directory remains mounted and NodeODM reloads durable task data.
 - Splat worker restart: `running` becomes `queued`; COLMAP output and Nerfstudio checkpoints remain in `splat/work`.
 - Splat failure: project becomes `partial`; ODM outputs stay available and only the splat stage can be retried.
-- ODM failure: inspect NodeODM console lines in the project log before changing any parameters.
+- Full 3D mesh cleanup failure: the API retries the same NodeODM task once with ODM's 2.5D terrain mesh and reuses completed reconstruction work.
+- Other ODM failure, or a failed terrain-mesh recovery: inspect NodeODM console lines in the project log before changing any parameters.
+
+Each new run writes a mapper log line confirming the effective preset,
+feature/point-cloud quality, rolling-shutter flag, and readout accepted by
+NodeODM. For an FC330 High run it must report `preset=high`,
+`feature-quality=ultra`, `pc-quality=high`, `rolling-shutter=True`, and
+`rolling-shutter-readout=33ms`. The API fails closed if NodeODM does not retain
+the requested options.
 
 ## Logs and disk
 

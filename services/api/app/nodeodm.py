@@ -19,6 +19,7 @@ NODEODM_OUTPUTS = [
     "odm_filterpoints",
     "odm_meshing",
     "odm_texturing",
+    "odm_texturing_25d",
     "odm_dem",
     "odm_report",
     "orthophoto_tiles",
@@ -39,6 +40,37 @@ NODEODM_OUTPUTS = [
 
 class NodeODMError(RuntimeError):
     pass
+
+
+def option_mismatches(
+    expected: list[dict[str, Any]], actual: list[dict[str, Any]]
+) -> list[str]:
+    actual_by_name = {
+        str(option.get("name")): option.get("value")
+        for option in actual
+        if isinstance(option, dict) and option.get("name")
+    }
+    mismatches: list[str] = []
+    for option in expected:
+        name = str(option["name"])
+        expected_value = option.get("value")
+        if name not in actual_by_name:
+            mismatches.append(f"{name} (missing)")
+            continue
+        actual_value = actual_by_name[name]
+        if isinstance(expected_value, bool):
+            matches = isinstance(actual_value, bool) and expected_value == actual_value
+        elif (
+            isinstance(expected_value, (int, float))
+            and isinstance(actual_value, (int, float))
+            and not isinstance(actual_value, bool)
+        ):
+            matches = float(expected_value) == float(actual_value)
+        else:
+            matches = expected_value == actual_value
+        if not matches:
+            mismatches.append(f"{name} (expected {expected_value!r}, got {actual_value!r})")
+    return mismatches
 
 
 class NodeODMClient:
@@ -67,6 +99,31 @@ class NodeODMClient:
             raise NodeODMError("NodeODM returned malformed option metadata")
         return payload
 
+    async def _verify_task_options(
+        self, task_uuid: str, expected: list[dict[str, Any]]
+    ) -> None:
+        info = await self.task_info(task_uuid)
+        actual_options = info.get("options")
+        if not isinstance(actual_options, list):
+            try:
+                await self.cancel(task_uuid)
+            except Exception:
+                pass
+            raise NodeODMError("NodeODM did not report the effective task options")
+        mismatches = option_mismatches(expected, actual_options)
+        if not mismatches:
+            return
+        try:
+            await self.cancel(task_uuid)
+        except Exception:
+            pass
+        preview = ", ".join(mismatches[:8])
+        if len(mismatches) > 8:
+            preview += f", and {len(mismatches) - 8} more"
+        raise NodeODMError(
+            "NodeODM did not retain the requested processing options: " + preview
+        )
+
     async def create_task(
         self,
         name: str,
@@ -74,15 +131,19 @@ class NodeODMClient:
         options: list[dict[str, Any]],
         task_uuid: str,
     ) -> str:
+        # NodeODM's /task/new/init endpoint is parsed by multer().none(), which
+        # accepts multipart/form-data only. Sending these fields via httpx's
+        # `data=` silently leaves req.body empty and causes ODM to run with
+        # defaults while NodeODM still accepts the upload.
         form = {
-            "name": name,
-            "options": json.dumps(options),
-            "outputs": json.dumps(NODEODM_OUTPUTS),
+            "name": (None, name),
+            "options": (None, json.dumps(options)),
+            "outputs": (None, json.dumps(NODEODM_OUTPUTS)),
         }
         result = await self._json(
             "POST",
             "/task/new/init",
-            data=form,
+            files=form,
             headers={"Set-UUID": task_uuid},
         )
         if not isinstance(result, dict) or result.get("uuid") != task_uuid:
@@ -109,6 +170,7 @@ class NodeODMClient:
         committed = await self._json("POST", f"/task/new/commit/{task_uuid}")
         if not isinstance(committed, dict) or committed.get("uuid") != task_uuid:
             raise NodeODMError("NodeODM committed an unexpected task UUID")
+        await self._verify_task_options(task_uuid, options)
         return committed["uuid"]
 
     async def task_info(self, task_uuid: str) -> dict[str, Any]:
@@ -135,6 +197,8 @@ class NodeODMClient:
         if options is not None:
             data["options"] = json.dumps(options)
         await self._json("POST", "/task/restart", data=data)
+        if options is not None:
+            await self._verify_task_options(task_uuid, options)
 
     async def remove(self, task_uuid: str) -> None:
         await self._json("POST", "/task/remove", data={"uuid": task_uuid})

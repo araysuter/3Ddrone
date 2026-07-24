@@ -652,6 +652,16 @@ button {
   color: var(--blue-light);
 }
 
+.stage-row.failed {
+  border-left-color: var(--red);
+  background: #251719;
+}
+
+.stage-row.failed small,
+.stage-row.failed .stage-icon {
+  color: var(--red);
+}
+
 .stage-row em {
   font: 600 9px/1 var(--mono);
   font-style: normal;

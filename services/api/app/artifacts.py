@@ -136,6 +136,7 @@ def artifact_path_allowed(project_id: str, relative_path: str) -> bool:
         "artifacts/entwine_pointcloud/",
         "artifacts/3d_tiles/",
         "artifacts/odm_texturing/",
+        "artifacts/odm_texturing_25d/",
     )
     return normalized.startswith(viewer_prefixes)
 
@@ -145,6 +146,13 @@ def manifest(project_id: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for category, label, relative, viewer in KNOWN_ARTIFACTS:
         path = root / relative
+        if not path.is_file() and relative.startswith("odm_texturing/"):
+            terrain_relative = relative.replace("odm_texturing/", "odm_texturing_25d/", 1)
+            terrain_path = root / terrain_relative
+            if terrain_path.is_file():
+                relative = terrain_relative
+                path = terrain_path
+                label = label.replace("Textured mesh", "Textured terrain mesh")
         if path.is_file():
             results.append(
                 {
