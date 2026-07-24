@@ -6,7 +6,7 @@ Use Ubuntu 24.04 with Docker Engine and Compose v2, an NVIDIA driver compatible 
 
 ```bash
 nvidia-smi
-sudo systemctl enable --now nvidia-persistenced
+sudo systemctl restart nvidia-persistenced
 sudo systemctl restart docker
 docker run --rm --gpus '"device=0"' nvidia/cuda:12.9.1-base-ubuntu24.04 nvidia-smi
 make host-check
@@ -37,7 +37,7 @@ failed to fulfil mount request: open /run/nvidia-persistenced/socket: no such fi
 the application images are already built; the host NVIDIA runtime is incomplete. Repair the host and retry:
 
 ```bash
-sudo systemctl enable --now nvidia-persistenced
+sudo systemctl restart nvidia-persistenced
 test -S /run/nvidia-persistenced/socket
 sudo systemctl restart docker
 make host-check

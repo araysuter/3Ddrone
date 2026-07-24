@@ -32,11 +32,11 @@ Host GPU preflight failed: NVIDIA Container Toolkit is configured to mount
 
 Repair it on Ubuntu, then rerun `make up`:
 
-  sudo systemctl enable --now nvidia-persistenced
+  sudo systemctl restart nvidia-persistenced
   sudo systemctl restart docker
 
 If the service unit is missing, install the nvidia-compute-utils package that
-matches the installed NVIDIA driver, then enable the service.
+matches the installed NVIDIA driver, then start the service.
 EOF
     exit 1
 fi
