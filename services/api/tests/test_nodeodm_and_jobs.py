@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -9,6 +10,17 @@ import pytest
 from app import jobs, main
 from app.db import one, transaction, update_project, utcnow
 from app.nodeodm import NodeODMClient, NodeODMError
+
+
+def test_nodeodm_image_reuses_an_existing_numeric_runtime_identity():
+    dockerfile = (
+        Path(__file__).resolve().parents[3] / "docker" / "nodeodm.Dockerfile"
+    ).read_text()
+
+    assert 'if ! getent group "${MAPPER_GID}"' in dockerfile
+    assert 'if ! getent passwd "${MAPPER_UID}"' in dockerfile
+    assert "USER ${MAPPER_UID}:${MAPPER_GID}" in dockerfile
+    assert "\nUSER odm\n" not in dockerfile
 
 
 @pytest.mark.asyncio

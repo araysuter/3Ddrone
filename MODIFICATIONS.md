@@ -14,7 +14,7 @@ This repository combines OpenDroneMap with a local application layer. The follow
 - `frontend/`: React/Vite workstation UI and Nginx reverse proxy.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
 - `services/splat/`: native OpenSfM-to-COLMAP export, Nerfstudio's supported ODM camera conversion, checkpoint-aware regular Splatfacto training, PLY export, Spark SPZ compression, and scene-transform retention. gsplat is pinned to commit `4d3a3b69db4de0326f983ccf7b7b255271a17b01`; the Spark compressor is pinned to `f22236f95fdd8078f0c12e3aab479523d401daf6`. The worker installs only Spark's runtime dependencies because Spark's repository-level install expects generated Rust/WASM development packages that are not committed in the release tag.
-- `docker/nodeodm.Dockerfile` and `docker/nodeodm-config.json`: reproducible production dependencies, unprivileged runtime ownership, token-aware health checking, read-only application code, and retained rotating NodeODM logs.
+- `docker/nodeodm.Dockerfile` and `docker/nodeodm-config.json`: reproducible production dependencies, unprivileged numeric runtime ownership that reuses a matching base-image UID/GID when present, token-aware health checking, read-only application code, and retained rotating NodeODM logs.
 - `compose.yaml`: four long-running services, an initialization helper, local-only host binding, isolated edge/internal networks, GPU device 0 reservations, dropped capabilities, log rotation, and durable bind mounts.
 - `docs/`, `scripts/`, tests, build helpers, and operator configuration.
 
