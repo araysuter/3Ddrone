@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-export function ModelViewer({ url }: { url: string }) {
+export function ModelViewer({
+  url,
+  fallbackUrl,
+}: {
+  url: string;
+  fallbackUrl?: string;
+}) {
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,17 +59,98 @@ export function ModelViewer({ url }: { url: string }) {
     draco.setDecoderPath("/draco/");
     draco.setWorkerLimit(2);
     draco.preload();
-    const loader = new GLTFLoader();
-    loader.setDRACOLoader(draco);
-    loader.load(
-      url,
-      (gltf) => {
+    const loadGlb = (glbUrl: string) =>
+      new Promise<THREE.Object3D>((resolve, reject) => {
+        const loader = new GLTFLoader();
+        loader.setDRACOLoader(draco);
+        loader.load(glbUrl, (gltf) => resolve(gltf.scene), undefined, reject);
+      });
+    const loadObj = (objUrl: string) =>
+      new Promise<THREE.Object3D>((resolve, reject) => {
+        const resourcePath = objUrl.slice(0, objUrl.lastIndexOf("/") + 1);
+        const mtlUrl = objUrl.replace(/\.obj$/i, ".mtl");
+        const manager = new THREE.LoadingManager();
+        const failedTextures: string[] = [];
+        let loadedObject: THREE.Object3D | null = null;
+        manager.onError = (failedUrl) => failedTextures.push(failedUrl);
+        manager.onLoad = () => {
+          if (!loadedObject) return;
+          if (failedTextures.length) {
+            reject(
+              new Error(
+                `ODM texture sidecars could not be loaded: ${failedTextures
+                  .slice(0, 3)
+                  .join(", ")}`,
+              ),
+            );
+            return;
+          }
+          resolve(loadedObject);
+        };
+        const mtlLoader = new MTLLoader(manager);
+        mtlLoader.setResourcePath(resourcePath);
+        mtlLoader.setMaterialOptions({
+          ignoreZeroRGBs: true,
+          side: THREE.DoubleSide,
+        });
+        mtlLoader.load(
+          mtlUrl,
+          (materials) => {
+            materials.preload();
+            const objLoader = new OBJLoader(manager);
+            objLoader.setMaterials(materials);
+            objLoader.load(
+              objUrl,
+              (object) => {
+                loadedObject = object;
+              },
+              undefined,
+              reject,
+            );
+          },
+          undefined,
+          reject,
+        );
+      });
+    const loadModel = async () => {
+      try {
+        return url.toLowerCase().endsWith(".obj")
+          ? await loadObj(url)
+          : await loadGlb(url);
+      } catch (primaryError) {
+        if (!fallbackUrl) throw primaryError;
+        return loadGlb(fallbackUrl);
+      }
+    };
+    void loadModel()
+      .then((loadedModel) => {
         if (disposed) {
-          disposeObject(gltf.scene);
+          disposeObject(loadedModel);
           return;
         }
-        model = gltf.scene;
+        model = loadedModel;
+        model.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          const materials = Array.isArray(mesh.material)
+            ? mesh.material
+            : mesh.material
+              ? [mesh.material]
+              : [];
+          for (const material of materials) {
+            const textured = material as THREE.MeshPhongMaterial;
+            if (textured.map) {
+              textured.map.colorSpace = THREE.SRGBColorSpace;
+              textured.map.needsUpdate = true;
+              textured.color.set(0xffffff);
+            }
+            textured.side = THREE.DoubleSide;
+            textured.needsUpdate = true;
+          }
+        });
         const initialBox = new THREE.Box3().setFromObject(model);
+        if (initialBox.isEmpty()) {
+          throw new Error("The textured model contains no renderable geometry.");
+        }
         const center = initialBox.getCenter(new THREE.Vector3());
         model.position.sub(center);
         scene.add(model);
@@ -74,15 +163,13 @@ export function ModelViewer({ url }: { url: string }) {
         camera.updateProjectionMatrix();
         controls.update();
         setLoading(false);
-      },
-      undefined,
-      (reason) => {
+      })
+      .catch((reason: unknown) => {
         if (disposed) return;
         const detail = reason instanceof Error ? reason.message : String(reason);
-        setError(`The textured GLB could not be loaded. ${detail}`);
+        setError(`The textured model could not be loaded. ${detail}`);
         setLoading(false);
-      },
-    );
+      });
     let frame = 0;
     const animate = () => {
       controls.update();
@@ -106,7 +193,7 @@ export function ModelViewer({ url }: { url: string }) {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [url]);
+  }, [fallbackUrl, url]);
 
   return (
     <div className="three-viewer" ref={target}>

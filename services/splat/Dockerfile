@@ -17,6 +17,7 @@ COPY --from=splat-cuda /usr/local/cuda-12.4 /usr/local/cuda-12.4
 
 ENV CUDA_HOME=/usr/local/cuda-12.4 \
     TORCH_CUDA_ARCH_LIST=8.6 \
+    TORCH_HOME=/opt/torch-cache \
     MAX_JOBS=2 \
     PATH="/opt/splat-venv/bin:/usr/local/cuda-12.4/bin:/code/venv/bin:$PATH"
 
@@ -49,6 +50,16 @@ RUN /usr/bin/python3 -m venv /opt/splat-venv \
     && /opt/splat-venv/bin/pip install --no-cache-dir -r /tmp/splat-requirements.txt \
     && /opt/splat-venv/bin/python -c \
         "import gsplat, nerfstudio, torch; assert torch.__version__.startswith('2.4.1'); assert torch.version.cuda == '12.4'; print('splat stack', torch.__version__, torch.version.cuda)"
+
+# Splatfacto constructs the LPIPS metric at startup. Torchmetrics otherwise
+# downloads AlexNet weights on the first job, but the worker intentionally runs
+# on an internal Docker network. Preload and retain the hash-verified weights in
+# the image so training is deterministic and requires no runtime DNS/network.
+RUN mkdir -p "${TORCH_HOME}" \
+    && /opt/splat-venv/bin/python -c \
+        "from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity; LearnedPerceptualImagePatchSimilarity(normalize=True); print('LPIPS cache ready')" \
+    && find "${TORCH_HOME}/hub/checkpoints" -type f -name 'alexnet-*.pth' -size +1M -print -quit | grep -q . \
+    && chmod -R a+rX "${TORCH_HOME}"
 
 # Spark's MIT-licensed compressor produces the web-ready SPZ derivative. Its
 # repository package.json contains development-only file dependencies generated

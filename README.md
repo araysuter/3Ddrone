@@ -13,8 +13,9 @@ The web app accepts drone imagery and supporting control files, retains every pr
 - One GPU queue: NodeODM completes before the Splatfacto worker can run.
 - Memory-safe regular Splatfacto profiles for the 8 GB RTX 3060 Ti; `splatfacto-big` is not used.
 - Reproducible splat stack pinned to Nerfstudio 1.1.5, gsplat 1.4.0, PyTorch 2.4.1, CUDA 12.4, and compute capability 8.6.
-- OpenLayers raster maps, OGC 3D Tiles or direct LAZ point clouds, Three.js
-  Draco-compressed textured models, and Spark 2.1 Gaussian-splat viewing.
+- OpenLayers raster maps, OGC 3D Tiles or LAS/LAZ 1.4 point clouds, Three.js
+  OBJ/MTL/JPEG textured models with Draco GLB fallback, and Spark 2.1
+  Gaussian-splat viewing.
 - Local-only `127.0.0.1:8080` binding designed for Tailscale Serve.
 
 ```mermaid
@@ -96,9 +97,10 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
    ```
 
    The first ODM and Splatfacto builds download and compile large CUDA stacks
-   and can take a substantial amount of time. Later starts reuse the pinned ODM
-   image even when application code changes. Use `make rebuild-odm` only after
-   intentionally changing ODM or `gpu.Dockerfile`.
+   and can take a substantial amount of time. The Splatfacto build also caches
+   its LPIPS/AlexNet metric weights so jobs do not need runtime internet. Later
+   starts reuse the pinned ODM image even when application code changes. Use
+   `make rebuild-odm` only after intentionally changing ODM or `gpu.Dockerfile`.
 
 5. Verify local health and GPU visibility:
 

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   findArtifact,
+  selectMeshArtifacts,
   selectPointCloudArtifact,
 } from "../lib/artifacts";
 import type { Artifact, Project } from "../types";
@@ -73,6 +74,7 @@ export function ResultsView({ project }: { project: Project }) {
   const [elevation, setElevation] = useState<"dsm" | "dtm">(
     () => enabledElevationLayers[0] ?? "dsm",
   );
+  const meshArtifacts = selectMeshArtifacts(project.artifacts);
   const stats = useMemo(
     () => [
       ["IMAGES", `${project.inspection.images ?? "—"}`],
@@ -157,13 +159,20 @@ export function ResultsView({ project }: { project: Project }) {
           {tab === "mesh" && (
             <ArtifactState
               project={project}
-              artifact={find(project, "mesh", "GLB") ?? find(project, "mesh", "3D Tiles")}
+              artifact={meshArtifacts.primary}
             >
               {(artifact) =>
                 artifact.viewer === "tiles3d" ? (
                   <TilesViewer url={downloadUrl(project, artifact)} />
                 ) : (
-                  <ModelViewer url={downloadUrl(project, artifact)} />
+                  <ModelViewer
+                    url={downloadUrl(project, artifact)}
+                    fallbackUrl={
+                      meshArtifacts.fallback
+                        ? downloadUrl(project, meshArtifacts.fallback)
+                        : undefined
+                    }
+                  />
                 )
               }
             </ArtifactState>

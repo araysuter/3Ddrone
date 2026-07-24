@@ -20,3 +20,13 @@ export function selectPointCloudArtifact(artifacts: Artifact[] | undefined) {
     findArtifact(artifacts, "point_cloud", "LAZ")
   );
 }
+
+export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
+  const obj = findArtifact(artifacts, "mesh", "OBJ");
+  const glb = findArtifact(artifacts, "mesh", "GLB");
+  const tiles = findArtifact(artifacts, "mesh", "3D Tiles");
+  return {
+    primary: obj ?? glb ?? tiles,
+    fallback: obj ? glb : undefined,
+  };
+}

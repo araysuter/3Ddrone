@@ -11,6 +11,7 @@ import pytest
 
 
 SPLAT_APP = Path(__file__).resolve().parents[2] / "splat" / "app.py"
+SPLAT_DOCKERFILE = Path(__file__).resolve().parents[2] / "splat" / "Dockerfile"
 SPEC = importlib.util.spec_from_file_location("splat_worker_app", SPLAT_APP)
 assert SPEC and SPEC.loader
 splat_app = importlib.util.module_from_spec(SPEC)
@@ -208,3 +209,11 @@ def test_stale_queue_entry_does_not_crash_the_splat_runner(monkeypatch) -> None:
         await asyncio.gather(runner, return_exceptions=True)
 
     asyncio.run(scenario())
+
+
+def test_splat_image_preloads_lpips_for_offline_runtime() -> None:
+    dockerfile = SPLAT_DOCKERFILE.read_text()
+
+    assert "TORCH_HOME=/opt/torch-cache" in dockerfile
+    assert "LearnedPerceptualImagePatchSimilarity(normalize=True)" in dockerfile
+    assert "alexnet-*.pth" in dockerfile

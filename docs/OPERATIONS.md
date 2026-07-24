@@ -130,6 +130,9 @@ Restore the entire configured data directory, not just `mapper.sqlite3`; databas
 - Optional COLMAP exporter failure: the worker logs the exporter tail and
   continues through Nerfstudio's ODM converter; use **Retry splat** on projects
   created before this behavior was installed.
+- Splatfacto initialization remains offline. Its LPIPS/AlexNet weights are
+  baked into `/opt/torch-cache`; a runtime `urllib` or DNS error means the
+  splat image predates that cache and must be rebuilt with `make up`.
 - Full 3D mesh cleanup failure: the API retries the same NodeODM task once with ODM's 2.5D terrain mesh and reuses completed reconstruction work.
 - Other ODM failure, or a failed terrain-mesh recovery: inspect NodeODM console lines in the project log before changing any parameters.
 

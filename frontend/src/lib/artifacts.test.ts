@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Artifact } from "../types";
-import { selectPointCloudArtifact } from "./artifacts";
+import { selectMeshArtifacts, selectPointCloudArtifact } from "./artifacts";
 
-function artifact(label: string, viewer: string): Artifact {
+function artifact(
+  label: string,
+  viewer: string,
+  category = "point_cloud",
+): Artifact {
   return {
     id: label,
-    category: "point_cloud",
+    category,
     label,
     path: `artifacts/${label}`,
     viewer,
@@ -31,5 +35,27 @@ describe("selectPointCloudArtifact", () => {
     ];
 
     expect(selectPointCloudArtifact(artifacts)?.viewer).toBe("tiles3d");
+  });
+});
+
+describe("selectMeshArtifacts", () => {
+  it("prefers the textured OBJ and retains GLB as a fallback", () => {
+    const obj = artifact("Textured terrain mesh OBJ", "mesh", "mesh");
+    const glb = artifact("Textured terrain mesh GLB", "mesh", "mesh");
+    const tiles = artifact("OGC 3D Tiles textured model", "tiles3d", "mesh");
+
+    expect(selectMeshArtifacts([tiles, glb, obj])).toEqual({
+      primary: obj,
+      fallback: glb,
+    });
+  });
+
+  it("uses GLB directly when no OBJ is available", () => {
+    const glb = artifact("Textured mesh GLB", "mesh", "mesh");
+
+    expect(selectMeshArtifacts([glb])).toEqual({
+      primary: glb,
+      fallback: undefined,
+    });
   });
 });

@@ -67,6 +67,8 @@ Inspect NodeODM output and pass only if:
   and `ns-process-data odm` still completes from the authoritative ODM cameras.
 - Nerfstudio's `ns-process-data odm` conversion succeeds without replacing ODM's calibrated Brown camera model with a weaker model.
 - Regular Splatfacto stays within the 8 GB VRAM envelope.
+- Splatfacto initializes on the internal worker network without DNS access by
+  using the LPIPS/AlexNet weights baked into the image.
 - PLY renders in Spark, SPZ compression succeeds, and `scene_transform.json` is retained.
 
 Repeat with High only after Standard passes.
@@ -78,9 +80,10 @@ At 1440×900 and 1280×720:
 1. Switch projects while one is processing.
 2. Interrupt and resume an upload.
 3. Cancel an active ODM task and verify the durable state.
-4. Open orthomosaic, point cloud, GLB, splat, elevation, report, and files.
-   Confirm a direct LAZ fallback works when Potree/point-cloud 3D Tiles are not
-   present, and that ODM's Draco-compressed GLB renders without a decoder error.
+4. Open orthomosaic, point cloud, 3D model, splat, elevation, report, and files.
+   Confirm the LAS/LAZ 1.4 fallback works when point-cloud 3D Tiles are not
+   present, and that ODM's OBJ/MTL/JPEG model renders with its photographic
+   texture. Also verify that the Draco-compressed GLB fallback opens.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
 7. Compare distance, area, and DSM/DTM samples against QGIS.

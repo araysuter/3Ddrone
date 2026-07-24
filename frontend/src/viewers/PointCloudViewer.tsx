@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { load } from "@loaders.gl/core";
-import { LASLoader } from "@loaders.gl/las";
-import lasWorkerUrl from "@loaders.gl/las/las-worker.js?url";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-type NumericArray =
-  | Float32Array
-  | Float64Array
-  | Int8Array
-  | Uint8Array
-  | Uint8ClampedArray
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array;
+type WorkerResult =
+  | {
+      type: "success";
+      positions: Float32Array;
+      colors: Uint8Array | null;
+      pointCount: number;
+      radius: number;
+    }
+  | { type: "error"; message: string };
 
 export function PointCloudViewer({ url }: { url: string }) {
   const target = useRef<HTMLDivElement>(null);
@@ -45,73 +41,42 @@ export function PointCloudViewer({ url }: { url: string }) {
 
     let disposed = false;
     let points: THREE.Points | null = null;
-
-    void load(url, LASLoader, {
-      las: {
-        colorDepth: "auto",
-        fp64: true,
-        workerUrl: lasWorkerUrl,
-      },
-    })
-      .then((mesh) => {
-        const source = mesh.attributes.POSITION;
-        if (!source || source.size < 3) {
-          throw new Error("The LAZ file does not contain XYZ positions.");
-        }
-        const values = source.value as NumericArray;
-        const vertexCount =
-          mesh.header?.vertexCount ?? Math.floor(values.length / source.size);
-        if (!vertexCount) {
-          throw new Error("The LAZ file contains no points.");
-        }
-
-        const bounds = mesh.header?.boundingBox;
-        const centerX = bounds ? (bounds[0][0] + bounds[1][0]) / 2 : values[0];
-        const centerY = bounds ? (bounds[0][1] + bounds[1][1]) / 2 : values[1];
-        const centerZ = bounds ? (bounds[0][2] + bounds[1][2]) / 2 : values[2];
-        const positions = new Float32Array(vertexCount * 3);
-        for (let index = 0; index < vertexCount; index += 1) {
-          const sourceIndex = index * source.size;
-          const destinationIndex = index * 3;
-          // ODM point clouds are Z-up. Center before converting to Float32 so
-          // projected UTM coordinates retain centimeter-scale local detail.
-          positions[destinationIndex] = values[sourceIndex] - centerX;
-          positions[destinationIndex + 1] = values[sourceIndex + 2] - centerZ;
-          positions[destinationIndex + 2] = -(values[sourceIndex + 1] - centerY);
-        }
-
+    const abortController = new AbortController();
+    const worker = new Worker(
+      new URL("../workers/lazrs-worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+      if (disposed) return;
+      if (event.data.type === "error") {
+        setError(`The LAZ point cloud could not be loaded. ${event.data.message}`);
+        setLoading(false);
+        return;
+      }
+      try {
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        const sourceColor = mesh.attributes.COLOR_0;
-        if (sourceColor) {
-          const colorValues = sourceColor.value as NumericArray;
-          const colors = new Uint8Array(vertexCount * 3);
-          for (let index = 0; index < vertexCount; index += 1) {
-            const sourceIndex = index * sourceColor.size;
-            const destinationIndex = index * 3;
-            colors[destinationIndex] = Number(colorValues[sourceIndex]);
-            colors[destinationIndex + 1] = Number(colorValues[sourceIndex + 1]);
-            colors[destinationIndex + 2] = Number(colorValues[sourceIndex + 2]);
-          }
+        geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(event.data.positions, 3),
+        );
+        if (event.data.colors) {
           geometry.setAttribute(
             "color",
-            new THREE.BufferAttribute(colors, 3, true),
+            new THREE.BufferAttribute(event.data.colors, 3, true),
           );
         }
-        geometry.computeBoundingSphere();
-        const radius = Math.max(geometry.boundingSphere?.radius ?? 1, 1);
+        const radius = Math.max(event.data.radius, 1);
+        geometry.boundingSphere = new THREE.Sphere(
+          new THREE.Vector3(0, 0, 0),
+          radius,
+        );
         const material = new THREE.PointsMaterial({
-          color: sourceColor ? 0xffffff : 0xb8d8ef,
+          color: event.data.colors ? 0xffffff : 0xb8d8ef,
           size: Math.max(0.025, radius / 900),
           sizeAttenuation: true,
-          vertexColors: Boolean(sourceColor),
+          vertexColors: Boolean(event.data.colors),
         });
         const loadedPoints = new THREE.Points(geometry, material);
-        if (disposed) {
-          geometry.dispose();
-          material.dispose();
-          return;
-        }
         points = loadedPoints;
         scene.add(loadedPoints);
         controls.target.set(0, 0, 0);
@@ -121,9 +86,34 @@ export function PointCloudViewer({ url }: { url: string }) {
         camera.updateProjectionMatrix();
         controls.update();
         setLoading(false);
+      } catch (reason: unknown) {
+        const detail = reason instanceof Error ? reason.message : String(reason);
+        setError(`The LAZ point cloud could not be loaded. ${detail}`);
+        setLoading(false);
+      }
+    };
+    worker.onerror = (event) => {
+      if (disposed) return;
+      setError(
+        `The LAS 1.4 decoder stopped unexpectedly. ${event.message || "Worker error"}`,
+      );
+      setLoading(false);
+    };
+    void fetch(url, {
+      credentials: "same-origin",
+      signal: abortController.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Download failed with HTTP ${response.status}.`);
+        }
+        return response.arrayBuffer();
+      })
+      .then((buffer) => {
+        if (!disposed) worker.postMessage({ buffer }, [buffer]);
       })
       .catch((reason: unknown) => {
-        if (disposed) return;
+        if (disposed || abortController.signal.aborted) return;
         const detail = reason instanceof Error ? reason.message : String(reason);
         setError(`The LAZ point cloud could not be loaded. ${detail}`);
         setLoading(false);
@@ -146,6 +136,8 @@ export function PointCloudViewer({ url }: { url: string }) {
 
     return () => {
       disposed = true;
+      abortController.abort();
+      worker.terminate();
       cancelAnimationFrame(frame);
       resize.disconnect();
       controls.dispose();

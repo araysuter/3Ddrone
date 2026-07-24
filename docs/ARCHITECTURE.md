@@ -60,6 +60,11 @@ stateDiagram-v2
 
 There is one API job-runner task and NodeODM is configured with `parallelQueueProcessing=1`. The runner waits for ODM completion before it submits a splat job, so the two GPU-heavy workloads cannot overlap.
 
+The splat image preloads Splatfacto's LPIPS/AlexNet metric weights into
+`/opt/torch-cache` while the image is built. The running worker remains on the
+internal network and does not need DNS or internet access to initialize
+training.
+
 Before uploading, the API reserves a UUID and sends it through NodeODM's
 standard `Set-UUID` field. This makes a lost commit response recoverable: the
 same durable UUID is polled rather than creating an ambiguous duplicate task.
@@ -120,9 +125,10 @@ selection again, so stale files from an earlier run cannot expose a disabled
 product.
 
 - Orthomosaic/DSM/DTM: OpenLayers and local static tiles.
-- Point cloud: generated Potree/EPT when present, with OGC 3D Tiles as the
-  current ODM fallback.
-- Textured mesh: Three.js GLB or OGC 3D Tiles viewer; OBJ remains downloadable.
+- Point cloud: generated OGC 3D Tiles when present; otherwise a background
+  Rust/WASM worker decodes ODM's LAS/LAZ 1.4 output without blocking the UI.
+- Textured mesh: Three.js loads ODM's authoritative OBJ, MTL, and JPEG textures,
+  with the Draco-compressed GLB or OGC 3D Tiles retained as fallbacks.
 - Gaussian splat: Spark 2.1 loads SPZ or PLY.
 - Report: same-origin embedded PDF.
 - Elevation: raster sample in the project CRS using Rasterio.
