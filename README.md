@@ -13,20 +13,21 @@ The web app accepts drone imagery and supporting control files, retains every pr
 - One GPU queue: NodeODM completes before the Splatfacto worker can run.
 - Memory-safe regular Splatfacto profiles for the 8 GB RTX 3060 Ti; `splatfacto-big` is not used.
 - Reproducible splat stack pinned to Nerfstudio 1.1.5, gsplat 1.4.0, PyTorch 2.4.1, CUDA 12.4, and compute capability 8.6.
-- OpenLayers, the NodeODM Potree output, Three.js, and Spark 2.1 viewers.
+- OpenLayers raster maps, Potree/EPT or OGC 3D Tiles point clouds, Three.js
+  textured models, and Spark 2.1 Gaussian-splat viewing.
 - Local-only `127.0.0.1:8080` binding designed for Tailscale Serve.
 
 ```mermaid
 flowchart LR
     B["Browser over Tailscale HTTPS"] --> N["Nginx + React"]
     N --> A["FastAPI orchestrator"]
-    A --> D["SQLite + retained project data"]
+    A --> R["SQLite + retained project data"]
     A --> O["NodeODM 2.2.3"]
     O --> M["Unmodified ODM 3.6.0 GPU engine"]
     A --> S["Splat worker"]
     S --> C["OpenSfM export_colmap"]
-    S --> D["Nerfstudio ODM converter"]
-    D --> G["Nerfstudio Splatfacto + gsplat"]
+    S --> V["Nerfstudio ODM converter"]
+    V --> G["Nerfstudio Splatfacto + gsplat"]
     G --> P["PLY + Spark SPZ + scene transform"]
 ```
 
@@ -50,12 +51,19 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
 
 ## Install
 
-1. Install Docker Engine, the current NVIDIA driver, and [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Start the NVIDIA persistence daemon used by the container runtime:
+1. Install Docker Engine, the current NVIDIA driver, and
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+   Configure Docker as an NVIDIA runtime and restart it:
 
    ```bash
-   sudo systemctl restart nvidia-persistenced
+   sudo nvidia-ctk runtime configure --runtime=docker
    sudo systemctl restart docker
    ```
+
+   `nvidia-persistenced.service` is a static helper unit on many Ubuntu
+   installations, so do not try to enable it. The host preflight only requires
+   it to be running when the installed NVIDIA runtime configuration explicitly
+   mounts its socket.
 2. Clone this repository with submodules, which ODM itself uses:
 
    ```bash
@@ -73,15 +81,19 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
    openssl rand -hex 32
    ```
 
-   Put the two different generated values into `NODEODM_TOKEN` and `MAPPER_INTERNAL_TOKEN` in `.env`.
+   Put the two different generated values into `NODEODM_TOKEN` and
+   `MAPPER_INTERNAL_TOKEN` in `.env`. Set `MAPPER_UID` and `MAPPER_GID` to the
+   output of `id -u` and `id -g` for the account that owns the data directory.
 
-4. Build the pinned ODM base first, then the four application services:
+4. Validate the configuration, build the pinned images, run the host/GPU
+   preflight, start the services, and wait for health:
 
    ```bash
-   make build
-   make host-check
    make up
    ```
+
+   The first ODM and Splatfacto builds download and compile large CUDA stacks
+   and can take a substantial amount of time. Later starts reuse the images.
 
 5. Verify local health and GPU visibility:
 
@@ -105,7 +117,7 @@ Open the HTTPS URL reported by Tailscale, create the one local administrator, an
 
 The default High profile requests 2.5 cm raster resolution, high point-cloud density, and 30,000 regular Splatfacto steps. Standard requests 5 cm and 15,000 steps. Ultra requests 1 cm and 45,000 steps. ODM still caps outputs by its estimated ground sampling distance; the application never enables `ignore-gsd`.
 
-FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correction. Litchi `.lchm` files are retained as provenance but are never submitted as reconstruction inputs. JPG, DNG, TIFF, supported video, GCP, GEO, image-group, and alignment files can be submitted.
+FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correction. Litchi `.lchm` files are retained as provenance but are never submitted as reconstruction inputs. Accepted imagery is JPG/JPEG, DNG, TIF/TIFF, MP4, MOV, LRV, or MPEG transport-stream video. The supported control inputs are `gcp_list.txt`, `geo.txt`, `image_groups.txt`, `align.las`, `align.laz`, `align.tif`, and SRT subtitle telemetry.
 
 Consumer drone GPS is labeled “best effort,” not survey grade. Measurements use the project coordinate reference system when georeferenced products are available. Supplying GCPs changes the label to “GCP-assisted,” but the quality report and control residuals remain authoritative.
 
@@ -121,16 +133,19 @@ Frontend:
 
 ```bash
 npm --prefix frontend install
+npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
 For UI-only processing flows without a GPU:
 
 ```bash
-docker compose -f compose.yaml -f compose.demo.yaml up -d --build
+make demo
+curl --fail http://127.0.0.1:8080/api/health
 ```
 
-Demo mode never represents a reconstruction as real output.
+Demo mode starts only the API and frontend, requires no CUDA host, and never
+represents a reconstruction as real output.
 
 ## Documentation
 

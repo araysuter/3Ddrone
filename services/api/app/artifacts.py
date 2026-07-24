@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import mimetypes
-import os
+import stat
 import shutil
 import zipfile
-from pathlib import Path
+import uuid
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .config import settings
@@ -18,7 +19,8 @@ KNOWN_ARTIFACTS = [
     ("point_cloud", "Potree point cloud", "potree_pointcloud/index.html", "pointcloud"),
     ("mesh", "Textured mesh OBJ", "odm_texturing/odm_textured_model_geo.obj", "mesh"),
     ("mesh", "Textured mesh GLB", "odm_texturing/odm_textured_model_geo.glb", "mesh"),
-    ("mesh", "OGC 3D Tiles", "3d_tiles/tileset.json", "tiles3d"),
+    ("point_cloud", "OGC 3D Tiles point cloud", "3d_tiles/pointcloud/tileset.json", "tiles3d"),
+    ("mesh", "OGC 3D Tiles textured model", "3d_tiles/model/tileset.json", "tiles3d"),
     ("dsm", "Digital surface model", "odm_dem/dsm.tif", "map"),
     ("dtm", "Digital terrain model", "odm_dem/dtm.tif", "map"),
     ("report", "Quality report", "odm_report/report.pdf", "report"),
@@ -42,17 +44,68 @@ def safe_extract(zip_path: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
     with zipfile.ZipFile(zip_path) as archive:
-        for member in archive.infolist():
+        members = archive.infolist()
+        if len(members) > settings.max_archive_entries:
+            raise ValueError(
+                f"NodeODM archive has too many entries ({len(members):,} > "
+                f"{settings.max_archive_entries:,})"
+            )
+        uncompressed_size = sum(member.file_size for member in members)
+        if uncompressed_size > settings.max_archive_uncompressed_bytes:
+            raise ValueError("NodeODM archive exceeds the configured uncompressed size limit")
+
+        targets: set[Path] = set()
+        for member in members:
+            unix_mode = member.external_attr >> 16
+            if stat.S_ISLNK(unix_mode):
+                raise ValueError(f"Symlinks are not allowed in NodeODM archives: {member.filename}")
             target = (destination / member.filename).resolve()
             if root != target and root not in target.parents:
                 raise ValueError(f"Unsafe path in NodeODM archive: {member.filename}")
-        archive.extractall(destination)
+            if target in targets and not member.is_dir():
+                raise ValueError(f"Duplicate path in NodeODM archive: {member.filename}")
+            targets.add(target)
+
+        free_bytes = shutil.disk_usage(destination).free
+        if uncompressed_size > max(0, free_bytes - settings.disk_reserve_bytes):
+            raise ValueError("Not enough free disk space to extract NodeODM outputs safely")
+
+        for member in members:
+            target = (destination / member.filename).resolve()
+            if member.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, target.open("xb") as output:
+                shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def install_nodeodm_archive(project_id: str, archive: Path) -> None:
+    root = project_root(project_id)
+    root.mkdir(parents=True, exist_ok=True)
     destination = artifacts_root(project_id)
-    safe_extract(archive, destination)
-    shutil.copy2(archive, project_root(project_id) / "all.zip")
+    staging = root / f".artifacts-{uuid.uuid4().hex}.tmp"
+    previous = root / f".artifacts-{uuid.uuid4().hex}.old"
+    archive_staging = root / ".all.zip.tmp"
+    try:
+        safe_extract(archive, staging)
+        shutil.copy2(archive, archive_staging)
+        if destination.exists():
+            destination.replace(previous)
+        staging.replace(destination)
+        archive_staging.replace(root / "all.zip")
+    except Exception:
+        if previous.exists():
+            if destination.exists():
+                shutil.rmtree(destination)
+            previous.replace(destination)
+        raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+        if previous.exists():
+            shutil.rmtree(previous)
+        archive_staging.unlink(missing_ok=True)
 
 
 def resolve_artifact_path(project_id: str, relative_path: str) -> Path:
@@ -67,6 +120,14 @@ def resolve_artifact_path(project_id: str, relative_path: str) -> Path:
 
 def artifact_path_allowed(project_id: str, relative_path: str) -> bool:
     normalized = relative_path.strip("/")
+    logical_path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or logical_path.is_absolute()
+        or any(part in {"", ".", ".."} for part in logical_path.parts)
+        or "\\" in normalized
+    ):
+        return False
     exact = {item["path"] for item in manifest(project_id)}
     if normalized in exact:
         return True

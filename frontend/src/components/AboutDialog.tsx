@@ -12,19 +12,26 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="about-modal" onMouseDown={(event) => event.stopPropagation()}>
+      <section
+        className="about-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="about-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header>
           <div>
             <p className="eyebrow">ABOUT & SOURCE</p>
-            <h2>Local Aerial Mapper</h2>
+            <h2 id="about-title">Local Aerial Mapper</h2>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </header>
         <p>
-          A private, single-user workstation built around unmodified OpenDroneMap and NodeODM, with a
-          separate Nerfstudio/gsplat post-processing stage.
+          A private, single-user workstation built around the unmodified OpenDroneMap processing
+          engine and a pinned, locally hardened NodeODM API, with a separate Nerfstudio/gsplat
+          post-processing stage.
         </p>
         <dl>
           <div>

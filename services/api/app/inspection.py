@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".dng", ".tif", ".tiff"}
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".lrv", ".ts"}
 PROVENANCE_EXTENSIONS = {".lchm"}
 SUPPORT_NAMES = {"geo.txt", "gcp_list.txt", "image_groups.txt", "align.las", "align.laz", "align.tif"}
 
@@ -23,13 +24,14 @@ def classify_file(filename: str) -> str:
         return "video"
     if suffix in PROVENANCE_EXTENSIONS:
         return "provenance"
-    if Path(filename).name.lower() in SUPPORT_NAMES or suffix in {".geo", ".txt"}:
+    if Path(filename).name.lower() in SUPPORT_NAMES or suffix == ".srt":
         return "support"
     raise ValueError(f"Unsupported file type: {suffix or 'none'}")
 
 
 def validate_magic(path: Path, kind: str, filename: str | None = None) -> None:
-    header = path.read_bytes()[:16]
+    with path.open("rb") as source:
+        header = source.read(512)
     suffix = Path(filename or path.name).suffix.lower()
     if kind == "image":
         is_jpeg = header[:3] == b"\xff\xd8\xff"
@@ -46,12 +48,22 @@ def validate_magic(path: Path, kind: str, filename: str | None = None) -> None:
             return
         try:
             with Image.open(path) as image:
+                if image.width <= 0 or image.height <= 0 or image.width * image.height > 500_000_000:
+                    raise ValueError("Image dimensions are invalid or unreasonably large")
                 image.verify()
-        except (UnidentifiedImageError, OSError) as exc:
+        except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise ValueError("Image is corrupt or unreadable") from exc
-    elif kind == "video" and b"ftyp" not in header:
-        raise ValueError("Video signature is invalid")
-    elif kind == "video" and shutil.which("ffprobe"):
+    elif kind == "video":
+        iso_media = b"ftyp" in header[:64]
+        transport_stream = (
+            suffix == ".ts"
+            and len(header) > 188
+            and header[0] == 0x47
+            and header[188] == 0x47
+        )
+        if not (iso_media or transport_stream):
+            raise ValueError("Video signature is invalid")
+    if kind == "video" and shutil.which("ffprobe"):
         try:
             subprocess.run(
                 ["ffprobe", "-v", "error", "-show_format", str(path)],
@@ -61,6 +73,14 @@ def validate_magic(path: Path, kind: str, filename: str | None = None) -> None:
             )
         except subprocess.SubprocessError as exc:
             raise ValueError("Video is corrupt or unreadable") from exc
+    elif kind == "support":
+        name = Path(filename or path.name).name.lower()
+        if name in {"align.las", "align.laz"} and header[:4] != b"LASF":
+            raise ValueError("LAS/LAZ alignment signature is invalid")
+        if name == "align.tif" and header[:4] not in {b"II*\x00", b"MM\x00*"}:
+            raise ValueError("TIFF alignment signature is invalid")
+        if suffix in {".txt", ".srt"} and b"\x00" in header:
+            raise ValueError("Text support file contains binary data")
 
 
 def _exiftool(path: Path) -> dict[str, Any]:
@@ -74,13 +94,21 @@ def _exiftool(path: Path) -> dict[str, Any]:
         text=True,
         timeout=30,
     )
-    return json.loads(result.stdout)[0]
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        raise ValueError("ExifTool returned invalid metadata")
+    return payload[0]
 
 
 def _first(meta: dict[str, Any], *keys: str) -> Any:
     for suffix in keys:
         for key, value in meta.items():
-            if key == suffix or key.endswith(f"]{suffix}"):
+            # ExifTool's `-G` JSON output uses `GROUP:Tag` keys in current
+            # releases, while older fixtures and some wrappers use
+            # `[GROUP]Tag`. Accept both without using a loose suffix match
+            # that could confuse similarly named tags.
+            tag = key.rsplit(":", 1)[-1].rsplit("]", 1)[-1]
+            if tag == suffix:
                 return value
     return None
 
@@ -117,7 +145,7 @@ def inspect_files(files: list[Path]) -> dict[str, Any]:
                 megapixels.append(float(width) * float(height) / 1_000_000)
         except Exception as exc:
             metadata_errors.append(f"{path.name}: {exc}")
-    camera_model = max(set(models), key=models.count) if models else ""
+    camera_model = Counter(models).most_common(1)[0][0] if models else ""
     nadir = sum(1 for pitch in pitches if pitch <= -85)
     oblique = len(pitches) - nadir
     accuracy = {

@@ -73,6 +73,7 @@ def init_db() -> None:
               advanced_json TEXT NOT NULL,
               inspection_json TEXT NOT NULL DEFAULT '{}',
               nodeodm_uuid TEXT,
+              nodeodm_output_line INTEGER NOT NULL DEFAULT 0,
               splat_job_id TEXT,
               error TEXT,
               gcp_used INTEGER NOT NULL DEFAULT 0,
@@ -104,6 +105,14 @@ def init_db() -> None:
               ON project_events(project_id, id);
             """
         )
+        project_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(projects)").fetchall()
+        }
+        if "nodeodm_output_line" not in project_columns:
+            db.execute(
+                "ALTER TABLE projects ADD COLUMN nodeodm_output_line INTEGER NOT NULL DEFAULT 0"
+            )
+        db.execute("DELETE FROM sessions WHERE expires_at <= ?", (utcnow(),))
 
 
 def one(sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
@@ -123,7 +132,20 @@ def emit_event(project_id: str, event_type: str, payload: dict[str, Any]) -> int
             "INSERT INTO project_events(project_id,event_type,payload_json,created_at) VALUES(?,?,?,?)",
             (project_id, event_type, json.dumps(payload), utcnow()),
         )
-        return int(cursor.lastrowid)
+        event_id = int(cursor.lastrowid)
+        if event_id % 250 == 0:
+            db.execute(
+                """
+                DELETE FROM project_events
+                WHERE project_id=? AND id NOT IN (
+                  SELECT id FROM project_events
+                  WHERE project_id=?
+                  ORDER BY id DESC LIMIT ?
+                )
+                """,
+                (project_id, project_id, settings.project_event_limit),
+            )
+        return event_id
 
 
 def update_project(project_id: str, **values: Any) -> None:

@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 
 interface Props {
   setupRequired: boolean;
-  onAuthenticated: () => void;
+  onAuthenticated: () => Promise<void>;
 }
 
 export function AuthScreen({ setupRequired, onAuthenticated }: Props) {
@@ -25,7 +25,7 @@ export function AuthScreen({ setupRequired, onAuthenticated }: Props) {
     try {
       if (setupRequired) await api.setup(username, password);
       else await api.login(username, password);
-      onAuthenticated();
+      await onAuthenticated();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Authentication failed.");
     } finally {

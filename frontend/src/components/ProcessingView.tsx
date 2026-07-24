@@ -9,7 +9,7 @@ import {
   Radio,
   Timer,
 } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Project, SystemMetrics } from "../types";
 
 const stages = [
@@ -38,11 +38,11 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
     project.status === "uploading" && uploadProgress !== undefined
       ? Math.round(uploadProgress * 100)
       : Math.round(project.progress);
-  const elapsed = useMemo(() => {
+  const elapsed = (() => {
     const seconds = Math.max(0, (Date.now() - new Date(project.created_at).getTime()) / 1000);
     if (seconds < 60) return `${Math.round(seconds)}s`;
     return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-  }, [project.updated_at]);
+  })();
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });

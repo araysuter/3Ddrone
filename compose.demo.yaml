@@ -1,8 +1,21 @@
 services:
+  data-init:
+    profiles: ["production"]
+  nodeodm:
+    profiles: ["production"]
+  splat-worker:
+    profiles: ["production"]
   api:
     environment:
       MAPPER_DEMO_MODE: "true"
       MAPPER_COOKIE_SECURE: "false"
-  splat-worker:
-    environment:
-      SPLAT_DRY_RUN: "true"
+    depends_on:
+      nodeodm:
+        condition: service_healthy
+        required: false
+      splat-worker:
+        condition: service_healthy
+        required: false
+      data-init:
+        condition: service_completed_successfully
+        required: false

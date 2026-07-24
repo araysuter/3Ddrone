@@ -1,0 +1,8 @@
+{
+  "logger": {
+    "level": "info",
+    "maxFileSize": 52428800,
+    "maxFiles": 3,
+    "logDirectory": "/var/www/logs"
+  }
+}

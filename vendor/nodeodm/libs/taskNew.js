@@ -20,7 +20,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const TaskManager = require('./TaskManager');
-const uuidv4 = require('uuid/v4');
+const { v4: uuidv4 } = require('uuid');
 const config = require('../config.js');
 const rmdir = require('rimraf');
 const Directories = require('./Directories');
@@ -28,19 +28,9 @@ const mv = require('mv');
 const Task = require('./Task');
 const async = require('async');
 const odmInfo = require('./odmInfo');
-const request = require('request');
 const ziputils = require('./ziputils');
 const statusCodes = require('./statusCodes');
 const logger = require('./logger');
-
-const download = function(uri, filename, callback) {
-    request.head(uri, function(err, res, body) {
-        if (err) callback(err);
-        else{
-            request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
-        }
-    });
-};
 
 const removeDirectory = function(dir, cb = () => {}){
     fs.stat(dir, (err, stats) => {
@@ -199,7 +189,9 @@ module.exports = {
         async.series([
             cb => {
                 // Check for problems before file uploads
-                if (req.body && req.body.options){
+                if (req.body && (req.body.zipurl || req.body.webhook)){
+                    cb(new Error("Remote ZIP downloads and webhooks are disabled in Local Aerial Mapper"));
+                }else if (req.body && req.body.options){
                     odmInfo.filterOptions(req.body.options, err => {
                         if (err) cb(err);
                         else cb();
@@ -270,24 +262,6 @@ module.exports = {
                 }
             },
 
-            // Unzips zip URL to tmp/<uuid>/ (if any)
-            cb => {
-                if (req.body.zipurl) {
-                    let archive = "zipurl.zip";
-
-                    upload.storage.getDestination(req, archive, (err, dstPath) => {
-                        if (err) cb(err);
-                        else{
-                            let archiveDestPath = path.join(dstPath, archive);
-
-                            download(req.body.zipurl, archiveDestPath, cb);
-                        }
-                    });
-                } else {
-                    cb();
-                }
-            },
-            
             // Move all uploads to data/<uuid>/images dir (if any)
             cb => fs.mkdir(destPath, undefined, cb),
             cb => fs.mkdir(destGcpPath, undefined, cb),

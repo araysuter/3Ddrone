@@ -69,7 +69,6 @@ ADVANCED_ALLOWLIST = {
     "pc-filter",
     "sfm-algorithm",
     "sky-removal",
-    "texturing-data-term",
 }
 
 BLOCKED_OPTIONS = {
@@ -87,6 +86,30 @@ BLOCKED_OPTIONS = {
     "split-overlap",
 }
 
+ADVANCED_RULES: dict[str, tuple[str, Any]] = {
+    "auto-boundary": ("bool", None),
+    "auto-boundary-distance": ("number", (0, 10_000)),
+    "camera-lens": (
+        "choice",
+        {"auto", "perspective", "brown", "fisheye", "fisheye_opencv", "spherical", "equirectangular", "dual"},
+    ),
+    "crop": ("number", (0, 1_000)),
+    "dem-decimation": ("int", (1, 100)),
+    "dem-gapfill-steps": ("int", (0, 50)),
+    "matcher-neighbors": ("int", (0, 10_000)),
+    "matcher-order": ("int", (0, 10_000)),
+    "max-concurrency": ("int", (1, max(1, os.cpu_count() or 1))),
+    "mesh-octree-depth": ("int", (1, 14)),
+    "min-num-features": ("int", (1_000, 200_000)),
+    "orthophoto-compression": (
+        "choice",
+        {"JPEG", "LZW", "PACKBITS", "DEFLATE", "LZMA", "NONE"},
+    ),
+    "pc-filter": ("number", (0, 50)),
+    "sfm-algorithm": ("choice", {"incremental", "triangulation", "planar"}),
+    "sky-removal": ("bool", None),
+}
+
 
 def calculate_concurrency(image_megapixels: float = 9, total_ram_gb: float = 48) -> int:
     usable_gb = max(2.0, total_ram_gb - 10.0)
@@ -100,15 +123,45 @@ def sanitize_advanced(values: dict[str, Any] | None) -> dict[str, Any]:
     rejected = set(values) & (BLOCKED_OPTIONS | (set(values) - ADVANCED_ALLOWLIST))
     if rejected:
         raise ValueError(f"Unsupported advanced options: {', '.join(sorted(rejected))}")
-    return {key: values[key] for key in sorted(values)}
+    sanitized: dict[str, Any] = {}
+    for key in sorted(values):
+        value = values[key]
+        kind, constraint = ADVANCED_RULES[key]
+        if kind == "bool":
+            if type(value) is not bool:
+                raise ValueError(f"{key} must be true or false")
+        elif kind == "int":
+            if type(value) is not int:
+                raise ValueError(f"{key} must be a whole number")
+            minimum, maximum = constraint
+            if not minimum <= value <= maximum:
+                raise ValueError(f"{key} must be between {minimum} and {maximum}")
+        elif kind == "number":
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{key} must be a number")
+            minimum, maximum = constraint
+            if not minimum <= float(value) <= maximum:
+                raise ValueError(f"{key} must be between {minimum} and {maximum}")
+            value = float(value)
+        elif kind == "choice" and value not in constraint:
+            raise ValueError(f"{key} must be one of: {', '.join(sorted(constraint))}")
+        sanitized[key] = value
+    return sanitized
 
 
 def resolve_outputs(values: dict[str, bool] | None) -> dict[str, bool]:
+    unknown = set(values or {}) - set(OUTPUT_DEFAULTS)
+    if unknown:
+        raise ValueError(f"Unsupported outputs: {', '.join(sorted(unknown))}")
+    if any(type(value) is not bool for value in (values or {}).values()):
+        raise ValueError("Output selections must be true or false")
     outputs = OUTPUT_DEFAULTS | (values or {})
     if outputs["dtm"]:
         outputs["point_cloud"] = True
     if outputs["splat"]:
         outputs["raw"] = True
+    if not any(outputs.values()):
+        raise ValueError("Select at least one output")
     return outputs
 
 
@@ -138,9 +191,10 @@ def resolve_odm_options(
     if outputs["point_cloud"]:
         options["pc-ept"] = True
         options["pc-copc"] = True
+    if outputs["point_cloud"] or outputs["mesh"]:
+        options["3d-tiles"] = True
     if outputs["mesh"]:
         options["gltf"] = True
-        options["3d-tiles"] = True
     if outputs["dsm"]:
         options["dsm"] = True
     if outputs["dtm"]:

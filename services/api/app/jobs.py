@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
-import zipfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +11,7 @@ import httpx
 from .artifacts import artifacts_root, install_nodeodm_archive, project_root
 from .config import settings
 from .db import all_rows, decode_project, emit_event, one, transaction, update_project
-from .nodeodm import NodeODMClient
+from .nodeodm import NodeODMClient, NodeODMError
 from .presets import PRESETS, resolve_odm_options
 
 _runner_task: asyncio.Task | None = None
@@ -48,6 +47,10 @@ def notify_runner() -> None:
         _wake.set()
 
 
+def runner_healthy() -> bool:
+    return _runner_task is not None and not _runner_task.done()
+
+
 def start_runner() -> None:
     global _runner_task, _wake
     if _runner_task is None or _runner_task.done():
@@ -81,7 +84,11 @@ async def worker_loop() -> None:
         )
         if project:
             try:
-                await process_project(decode_project(project))
+                decoded = decode_project(project)
+                if decoded["status"] == "splatting":
+                    await run_splat(decoded)
+                else:
+                    await process_project(decoded)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -97,13 +104,24 @@ async def worker_loop() -> None:
 
 def _source_files(project_id: str) -> list[Path]:
     source = settings.data_root / "source" / project_id
-    files = []
+    files: list[Path] = []
+    missing: list[str] = []
     for upload in all_rows(
         "SELECT filename,kind,state FROM uploads WHERE project_id=? ORDER BY created_at", (project_id,)
     ):
         if upload["state"] == "complete" and upload["kind"] in {"image", "video", "support"}:
-            files.append(source / upload["filename"])
-    return [path for path in files if path.is_file()]
+            path = source / upload["filename"]
+            if path.is_file():
+                files.append(path)
+            else:
+                missing.append(upload["filename"])
+    if missing:
+        raise RuntimeError(
+            "Validated source data disappeared before NodeODM upload: "
+            + ", ".join(missing[:10])
+            + ("…" if len(missing) > 10 else "")
+        )
+    return files
 
 
 async def process_project(project: dict[str, Any]) -> None:
@@ -112,31 +130,83 @@ async def process_project(project: dict[str, Any]) -> None:
         await _demo_process(project)
         return
     client = NodeODMClient()
+    current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+    if current and current["cancel_requested"]:
+        update_project(project_id, status="canceled", stage="Canceled")
+        emit_event(project_id, "state", {"status": "canceled"})
+        return
+    if project.get("nodeodm_uuid"):
+        for attempt in range(5):
+            try:
+                await client.task_info(project["nodeodm_uuid"])
+                break
+            except NodeODMError as exc:
+                message = str(exc).lower()
+                if "not found" not in message and "does not exist" not in message:
+                    raise
+                # The API may have stopped after reserving an upload UUID but before
+                # NodeODM committed the task. Use a fresh UUID; NodeODM will age out
+                # any incomplete temporary upload without duplicating GPU work.
+                update_project(project_id, nodeodm_uuid=None, nodeodm_output_line=0)
+                project["nodeodm_uuid"] = None
+                project["nodeodm_output_line"] = 0
+                break
+            except httpx.HTTPError:
+                if attempt == 4:
+                    raise
+                await asyncio.sleep(2**attempt)
     if not project.get("nodeodm_uuid"):
         update_project(project_id, status="processing", stage="Uploading to NodeODM", progress=2)
         emit_event(project_id, "state", {"status": "processing", "stage": "Uploading to NodeODM"})
         options = resolve_odm_options(
             project["preset"], project["outputs"], project["inspection"], project["advanced"]
         )
-        task_uuid = await client.create_task(project["name"], _source_files(project_id), options)
-        update_project(project_id, nodeodm_uuid=task_uuid, progress=5)
+        task_uuid = str(uuid.uuid4())
+        update_project(project_id, nodeodm_uuid=task_uuid, nodeodm_output_line=0)
+        try:
+            await client.create_task(
+                project["name"], _source_files(project_id), options, task_uuid
+            )
+        except Exception:
+            # Keep the reserved UUID durable. If the commit response was lost,
+            # a restart can reconnect to that exact task instead of submitting
+            # a second GPU job. A confirmed "not found" is reset above.
+            raise
+        update_project(project_id, nodeodm_uuid=task_uuid, nodeodm_output_line=0, progress=5)
         project["nodeodm_uuid"] = task_uuid
+        project["nodeodm_output_line"] = 0
 
     task_uuid = project["nodeodm_uuid"]
-    last_output = 0
+    last_output = int(project.get("nodeodm_output_line") or 0)
+    cancel_sent = False
+    cancel_failures = 0
     async for info in client.wait_for_terminal(task_uuid):
         current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
-        if current and current["cancel_requested"]:
-            await client.cancel(task_uuid)
+        if current and current["cancel_requested"] and not cancel_sent:
+            try:
+                await client.cancel(task_uuid)
+                cancel_sent = True
+                cancel_failures = 0
+            except (httpx.HTTPError, NodeODMError):
+                cancel_failures += 1
+                if cancel_failures >= 10:
+                    raise
         node_progress = float(info.get("progress") or 0)
         if node_progress <= 1:
             node_progress *= 100
         progress = min(92.0, max(5.0, 5.0 + node_progress * 0.87))
         stage = stage_for_progress(progress)
         update_project(project_id, status="processing", stage=stage, progress=progress)
-        output = info.get("output") or []
+        try:
+            output = await client.output(task_uuid, last_output)
+        except Exception:
+            output = []
         if output:
-            emit_event(project_id, "log", {"lines": output[-50:]})
+            last_output += len(output)
+            update_project(project_id, nodeodm_output_line=last_output)
+            safe_output = [line[:16_384] for line in output]
+            for offset in range(0, len(safe_output), 100):
+                emit_event(project_id, "log", {"lines": safe_output[offset : offset + 100]})
         emit_event(project_id, "progress", {"progress": progress, "stage": stage})
         code = int(info["status"]["code"])
         if code == 50:
@@ -148,6 +218,12 @@ async def process_project(project: dict[str, Any]) -> None:
             raise RuntimeError(message)
         if code == 40:
             break
+
+    current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+    if current and current["cancel_requested"]:
+        update_project(project_id, status="canceled", stage="Canceled")
+        emit_event(project_id, "state", {"status": "canceled"})
+        return
 
     archive = project_root(project_id) / "nodeodm-all.zip"
     await client.download_all(task_uuid, archive)
@@ -163,6 +239,11 @@ async def process_project(project: dict[str, Any]) -> None:
 
 async def run_splat(project: dict[str, Any]) -> None:
     project_id = project["id"]
+    current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+    if current and current["cancel_requested"]:
+        update_project(project_id, status="canceled", stage="Canceled")
+        emit_event(project_id, "state", {"status": "canceled"})
+        return
     update_project(project_id, status="splatting", stage="Gaussian splat", progress=94)
     emit_event(project_id, "state", {"status": "splatting", "stage": "Gaussian splat"})
     payload = {
@@ -174,38 +255,103 @@ async def run_splat(project: dict[str, Any]) -> None:
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60, read=None)) as client:
-            response = await client.post(
-                f"{settings.splat_url}/jobs",
-                json=payload,
-                headers={"X-Internal-Token": settings.internal_token},
-            )
-            response.raise_for_status()
+            for attempt in range(10):
+                try:
+                    response = await client.post(
+                        f"{settings.splat_url}/jobs",
+                        json=payload,
+                        headers={"X-Internal-Token": settings.internal_token},
+                    )
+                    response.raise_for_status()
+                    break
+                except httpx.HTTPError:
+                    if attempt == 9:
+                        raise
+                    await asyncio.sleep(min(30, 2**attempt))
             job = response.json()
             update_project(project_id, splat_job_id=job["id"])
+            last_signature: tuple[Any, ...] | None = None
+            cancel_sent = False
+            poll_failures = 0
             while True:
-                status = await client.get(
-                    f"{settings.splat_url}/jobs/{job['id']}",
-                    headers={"X-Internal-Token": settings.internal_token},
-                )
-                status.raise_for_status()
+                try:
+                    current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+                    if current and current["cancel_requested"] and not cancel_sent:
+                        cancel_response = await client.post(
+                            f"{settings.splat_url}/jobs/{job['id']}/cancel",
+                            headers={"X-Internal-Token": settings.internal_token},
+                        )
+                        cancel_response.raise_for_status()
+                        cancel_sent = True
+                    status = await client.get(
+                        f"{settings.splat_url}/jobs/{job['id']}",
+                        headers={"X-Internal-Token": settings.internal_token},
+                    )
+                    status.raise_for_status()
+                    poll_failures = 0
+                except httpx.HTTPError:
+                    poll_failures += 1
+                    if poll_failures >= 10:
+                        raise
+                    await asyncio.sleep(min(30, 2 ** (poll_failures - 1)))
+                    continue
                 details = status.json()
-                emit_event(project_id, "splat", details)
+                signature = (
+                    details.get("status"),
+                    details.get("progress"),
+                    details.get("message"),
+                    details.get("error"),
+                    tuple((details.get("log") or [])[-5:]),
+                )
+                if signature != last_signature:
+                    emit_event(
+                        project_id,
+                        "splat",
+                        {
+                            "status": details.get("status"),
+                            "progress": details.get("progress"),
+                            "message": details.get("message"),
+                            "error": details.get("error"),
+                            "lines": (details.get("log") or [])[-5:],
+                        },
+                    )
+                    last_signature = signature
                 if details["status"] == "completed":
                     break
+                if details["status"] == "canceled":
+                    update_project(project_id, status="canceled", stage="Canceled", error=None)
+                    emit_event(project_id, "state", {"status": "canceled"})
+                    return
                 if details["status"] == "failed":
                     raise RuntimeError(details.get("error") or "Gaussian splat failed")
                 await asyncio.sleep(3)
+        splat_output = artifacts_root(project_id) / "splat"
+        missing_outputs = [
+            name
+            for name in ("point_cloud.ply", "scene.spz", "scene_transform.json")
+            if not (splat_output / name).is_file()
+        ]
+        if missing_outputs:
+            raise RuntimeError(
+                "Gaussian splat worker reported completion without "
+                + ", ".join(missing_outputs)
+            )
         update_project(project_id, status="completed", stage="Completed", progress=100, error=None)
         emit_event(project_id, "state", {"status": "completed", "progress": 100})
     except Exception as exc:
-        update_project(
-            project_id,
-            status="partial",
-            stage="ODM complete — splat failed",
-            progress=96,
-            error=str(exc),
-        )
-        emit_event(project_id, "state", {"status": "partial", "error": str(exc)})
+        current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
+        if current and current["cancel_requested"]:
+            update_project(project_id, status="canceled", stage="Canceled", error=None)
+            emit_event(project_id, "state", {"status": "canceled"})
+        else:
+            update_project(
+                project_id,
+                status="partial",
+                stage="ODM complete — splat failed",
+                progress=96,
+                error=str(exc),
+            )
+            emit_event(project_id, "state", {"status": "partial", "error": str(exc)})
 
 
 async def _demo_process(project: dict[str, Any]) -> None:
@@ -213,6 +359,7 @@ async def _demo_process(project: dict[str, Any]) -> None:
     for progress in (4, 12, 21, 34, 48, 61, 74, 86, 93):
         if one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))["cancel_requested"]:
             update_project(project_id, status="canceled", stage="Canceled")
+            emit_event(project_id, "state", {"status": "canceled"})
             return
         stage = stage_for_progress(progress)
         update_project(project_id, status="processing", stage=stage, progress=progress)

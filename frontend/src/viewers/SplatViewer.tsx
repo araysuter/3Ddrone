@@ -39,6 +39,9 @@ export function SplatViewer({ url }: { url: string }) {
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
+      controls.dispose();
+      splat.dispose();
+      spark.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };

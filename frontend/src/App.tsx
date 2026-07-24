@@ -27,7 +27,12 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     const list = await api.listProjects();
-    setProjects(list);
+    setProjects((current) =>
+      list.map((project) => {
+        const existing = current.find((candidate) => candidate.id === project.id);
+        return existing ? { ...existing, ...project } : project;
+      }),
+    );
     setSelectedId((current) => current ?? list[0]?.id);
     if (selectedId) {
       try {
@@ -58,6 +63,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const unauthorized = () => {
+      setAuth("login");
+      setProjects([]);
+      setSelectedId(undefined);
+    };
+    window.addEventListener("mapper:unauthorized", unauthorized);
+    return () => window.removeEventListener("mapper:unauthorized", unauthorized);
+  }, []);
+
+  useEffect(() => {
     if (auth !== "ready") return;
     refresh().catch(console.error);
     api.system().then(setMetrics).catch(console.error);
@@ -81,6 +96,7 @@ export default function App() {
     };
     const changed = () => refresh().catch(console.error);
     stream.addEventListener("log", addLog);
+    stream.addEventListener("splat", addLog);
     stream.addEventListener("state", changed);
     stream.addEventListener("progress", changed);
     stream.addEventListener("artifacts", changed);
@@ -96,11 +112,19 @@ export default function App() {
     name: string;
     preset: string;
     outputs: Record<string, boolean>;
+    advanced: Record<string, unknown>;
     files: File[];
   }) {
     setCreating(true);
+    let createdProject: Project | undefined;
     try {
-      const project = await api.createProject(payload);
+      const project = await api.createProject({
+        name: payload.name,
+        preset: payload.preset,
+        outputs: payload.outputs,
+        advanced: payload.advanced,
+      });
+      createdProject = project;
       setProjects((current) => [project, ...current]);
       setSelectedId(project.id);
       setNewProjectOpen(false);
@@ -112,9 +136,69 @@ export default function App() {
       });
       await api.inspectProject(project.id);
       await api.startProject(project.id);
+      setUploadProgress((current) => {
+        const next = { ...current };
+        delete next[project.id];
+        return next;
+      });
       await refresh();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Upload failed";
+      if (!createdProject) throw reason;
+      const failedProjectId = createdProject.id;
+      setUploadProgress((current) => {
+        const next = { ...current };
+        delete next[failedProjectId];
+        return next;
+      });
+      setLogs((current) => ({
+        ...current,
+        [failedProjectId]: [
+          ...(current[failedProjectId] ?? []),
+          `[upload] ${message}`,
+          "[upload] Use Resume upload in this project and re-select the original files.",
+        ].slice(-500),
+      }));
+      await refresh().catch(() => undefined);
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function logout() {
+    try {
+      await api.logout();
+    } finally {
+      setAuth("login");
+      setProjects([]);
+      setSelectedId(undefined);
+    }
+  }
+
+  async function resumeUploads(project: Project, files: File[]) {
+    const completed = new Set(
+      (project.uploads ?? [])
+        .filter((upload) => upload.state === "complete")
+        .map((upload) => `${upload.filename}:${upload.size}`),
+    );
+    const remaining = files.filter((file) => !completed.has(`${file.name}:${file.size}`));
+    if (!remaining.length) throw new Error("Select at least one incomplete or rejected source file");
+    const progressByFile = new Map<string, number>();
+    try {
+      await uploadFiles(project.id, remaining, (file, progress) => {
+        progressByFile.set(`${file.name}:${file.size}`, progress);
+        const total = [...progressByFile.values()].reduce((sum, value) => sum + value, 0);
+        setUploadProgress((current) => ({ ...current, [project.id]: total / remaining.length }));
+      });
+      await api.inspectProject(project.id);
+      await api.startProject(project.id);
+      await refresh();
+    } finally {
+      setUploadProgress((current) => {
+        const next = { ...current };
+        delete next[project.id];
+        return next;
+      });
     }
   }
 
@@ -133,6 +217,8 @@ export default function App() {
         onSelect={setSelectedId}
         onNew={() => setNewProjectOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        onLogout={logout}
+        uploadProgress={uploadProgress}
       />
       <Workspace
         project={selected}
@@ -140,6 +226,7 @@ export default function App() {
         uploadProgress={selected ? uploadProgress[selected.id] : undefined}
         metrics={metrics}
         onChanged={refresh}
+        onResumeUploads={resumeUploads}
       />
       <NewProjectDialog
         open={newProjectOpen}

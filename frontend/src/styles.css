@@ -898,6 +898,24 @@ button {
   border: 0;
 }
 
+.three-viewer {
+  position: relative;
+}
+
+.viewer-error {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 50%;
+  padding: 8px 11px;
+  border: 1px solid #613b3b;
+  border-radius: 4px;
+  background: rgb(39 20 22 / 94%);
+  color: #e5a0a0;
+  font-size: 10px;
+  transform: translateX(-50%);
+}
+
 .ol-map {
   background-color: #0c161e;
 }
@@ -1373,12 +1391,108 @@ fieldset legend {
   transform: rotate(180deg);
 }
 
-.advanced-note {
-  padding: 10px;
-  color: #71808b;
+.advanced-panel {
+  border: 1px solid var(--border);
+  border-top: 0;
   background: #0d141a;
+}
+
+.advanced-note {
+  margin: 0;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  color: #71808b;
   font-size: 9px;
   line-height: 1.5;
+}
+
+.advanced-status {
+  padding: 16px 10px;
+  color: #71808b;
+  font-size: 9px;
+  text-align: center;
+}
+
+.advanced-panel > .form-error {
+  margin: 0;
+  padding: 12px 10px;
+}
+
+.advanced-option {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 190px);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced-option:last-child {
+  border-bottom: 0;
+}
+
+.advanced-option > label {
+  display: flex;
+  min-width: 0;
+  align-items: start;
+  gap: 8px;
+  color: #aab7c1;
+  cursor: pointer;
+}
+
+.advanced-option > label input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  accent-color: var(--blue);
+}
+
+.advanced-option > label span,
+.advanced-option > label strong,
+.advanced-option > label small {
+  display: block;
+  min-width: 0;
+}
+
+.advanced-option > label strong {
+  color: #bac7d0;
+  font: 600 9px/1.2 var(--mono);
+}
+
+.advanced-option > label small {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  color: #657581;
+  font-size: 8px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.advanced-option > input,
+.advanced-option > select {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  outline: 0;
+  color: #c5d1da;
+  background: #091016;
+  font-size: 9px;
+}
+
+.advanced-option > input:focus,
+.advanced-option > select:focus {
+  border-color: var(--blue);
+}
+
+.advanced-option > em {
+  grid-column: 1 / -1;
+  color: #b99a60;
+  font-size: 8px;
+  font-style: normal;
 }
 
 .modal-footer {
@@ -1563,5 +1677,21 @@ fieldset legend {
 
   .output-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .output-choice:nth-child(4n) {
+    border-right: 1px solid var(--border);
+  }
+
+  .output-choice:nth-last-child(-n + 4) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .output-choice:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .output-choice:nth-last-child(-n + 2) {
+    border-bottom: 0;
   }
 }

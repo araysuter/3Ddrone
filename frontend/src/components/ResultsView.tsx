@@ -21,6 +21,9 @@ const ModelViewer = lazy(() =>
 const SplatViewer = lazy(() =>
   import("../viewers/SplatViewer").then((module) => ({ default: module.SplatViewer })),
 );
+const TilesViewer = lazy(() =>
+  import("../viewers/TilesViewer").then((module) => ({ default: module.TilesViewer })),
+);
 
 const tabs = [
   ["orthomosaic", "ORTHOMOSAIC", Map],
@@ -51,7 +54,12 @@ export function ResultsView({ project }: { project: Project }) {
     () => [
       ["IMAGES", `${project.inspection.images ?? "—"}`],
       ["CAMERA", project.inspection.camera_model || "—"],
-      ["REL. ALTITUDE", project.inspection.relative_altitude_median ? `${project.inspection.relative_altitude_median} m` : "—"],
+      [
+        "REL. ALTITUDE",
+        project.inspection.relative_altitude_median != null
+          ? `${project.inspection.relative_altitude_median} m`
+          : "—",
+      ],
       ["GEOREFERENCE", project.gcp_used ? "GCP-assisted" : "Consumer GPS"],
     ],
     [project],
@@ -86,19 +94,38 @@ export function ResultsView({ project }: { project: Project }) {
         <Suspense fallback={<div className="viewer-loading">LOADING VIEWER…</div>}>
           {tab === "orthomosaic" && <MapViewer projectId={project.id} layer="orthomosaic" />}
           {tab === "point_cloud" && (
-            <ArtifactState project={project} artifact={find(project, "point_cloud", "Potree")}>
-              {(artifact) => (
-                <iframe
-                  className="artifact-iframe"
-                  title="Potree point cloud"
-                  src={downloadUrl(project, artifact)}
-                />
-              )}
+            <ArtifactState
+              project={project}
+              artifact={
+                find(project, "point_cloud", "Potree") ??
+                find(project, "point_cloud", "3D Tiles")
+              }
+            >
+              {(artifact) =>
+                artifact.viewer === "tiles3d" ? (
+                  <TilesViewer url={downloadUrl(project, artifact)} />
+                ) : (
+                  <iframe
+                    className="artifact-iframe"
+                    title="Potree point cloud"
+                    src={downloadUrl(project, artifact)}
+                  />
+                )
+              }
             </ArtifactState>
           )}
           {tab === "mesh" && (
-            <ArtifactState project={project} artifact={find(project, "mesh", "GLB")}>
-              {(artifact) => <ModelViewer url={downloadUrl(project, artifact)} />}
+            <ArtifactState
+              project={project}
+              artifact={find(project, "mesh", "GLB") ?? find(project, "mesh", "3D Tiles")}
+            >
+              {(artifact) =>
+                artifact.viewer === "tiles3d" ? (
+                  <TilesViewer url={downloadUrl(project, artifact)} />
+                ) : (
+                  <ModelViewer url={downloadUrl(project, artifact)} />
+                )
+              }
             </ArtifactState>
           )}
           {tab === "splat" && (

@@ -1,4 +1,6 @@
 ARG ODM_IMAGE=local-aerial-mapper/odm:3.6.0-gpu
+ARG GSPLAT_COMMIT=4d3a3b69db4de0326f983ccf7b7b255271a17b01
+ARG SPARK_COMMIT=f22236f95fdd8078f0c12e3aab479523d401daf6
 
 # Nerfstudio 1.1.5's gsplat backend needs a CUDA compiler. Keep this toolchain
 # separate from ODM's CUDA 12.9 runtime so the already-built ODM image remains
@@ -6,6 +8,9 @@ ARG ODM_IMAGE=local-aerial-mapper/odm:3.6.0-gpu
 FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS splat-cuda
 
 FROM ${ODM_IMAGE}
+
+ARG GSPLAT_COMMIT
+ARG SPARK_COMMIT
 
 USER root
 COPY --from=splat-cuda /usr/local/cuda-12.4 /usr/local/cuda-12.4
@@ -31,13 +36,16 @@ RUN apt-get update \
 
 COPY services/splat/requirements.txt /tmp/splat-requirements.txt
 RUN /usr/bin/python3 -m venv /opt/splat-venv \
-    && /opt/splat-venv/bin/pip install --no-cache-dir --upgrade "setuptools<70.0.0" wheel \
+    && /opt/splat-venv/bin/pip install --no-cache-dir --upgrade \
+        pip==26.1.2 \
+        "setuptools<70.0.0" \
+        wheel \
     && /opt/splat-venv/bin/pip install --no-cache-dir \
         torch==2.4.1+cu124 \
         torchvision==0.19.1+cu124 \
         --index-url https://download.pytorch.org/whl/cu124 \
     && /opt/splat-venv/bin/pip install --no-cache-dir --no-build-isolation \
-        "git+https://github.com/nerfstudio-project/gsplat.git@v1.4.0" \
+        "git+https://github.com/nerfstudio-project/gsplat.git@${GSPLAT_COMMIT}" \
     && /opt/splat-venv/bin/pip install --no-cache-dir -r /tmp/splat-requirements.txt \
     && /opt/splat-venv/bin/python -c \
         "import gsplat, nerfstudio, torch; assert torch.__version__.startswith('2.4.1'); assert torch.version.cuda == '12.4'; print('splat stack', torch.__version__, torch.version.cuda)"
@@ -48,6 +56,7 @@ RUN /usr/bin/python3 -m venv /opt/splat-venv \
 # the release tag. Install only the two dependencies used by the committed
 # JavaScript distribution and verify that the compressor can load.
 RUN git clone --branch v2.1.0 --depth 1 https://github.com/sparkjsdev/spark.git /opt/spark \
+    && test "$(git -C /opt/spark rev-parse HEAD)" = "${SPARK_COMMIT}" \
     && npm install \
         --prefix /opt/spark-runtime \
         --ignore-scripts \

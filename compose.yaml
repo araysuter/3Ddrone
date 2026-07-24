@@ -8,6 +8,18 @@ x-gpu: &gpu
           device_ids: ["0"]
           capabilities: [gpu]
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+x-service-security: &service-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   odm-gpu:
     profiles: ["build-only"]
@@ -16,28 +28,94 @@ services:
       context: .
       dockerfile: gpu.Dockerfile
 
+  data-init:
+    image: local-aerial-mapper/nodeodm:2.2.3-odm3.6.0
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        uid="$${MAPPER_UID}"
+        gid="$${MAPPER_GID}"
+        marker="/data/.ownership-$${uid}-$${gid}"
+        install -d -m 0770 \
+          /data/source \
+          /data/nodeodm \
+          /data/splat \
+          /data/splat/home \
+          /data/metadata \
+          /data/logs \
+          /data/logs/nodeodm \
+          /data/uploads
+        if [ ! -e "$${marker}" ]; then
+          chown -R "$${uid}:$${gid}" /data
+          touch "$${marker}"
+        fi
+        chown "$${uid}:$${gid}" \
+          /data \
+          /data/source \
+          /data/nodeodm \
+          /data/splat \
+          /data/splat/home \
+          /data/metadata \
+          /data/logs \
+          /data/logs/nodeodm \
+          /data/uploads
+    environment:
+      MAPPER_UID: ${MAPPER_UID:-1000}
+      MAPPER_GID: ${MAPPER_GID:-1000}
+    volumes:
+      - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}:/data
+    restart: "no"
+    logging: *default-logging
+
   nodeodm:
     image: local-aerial-mapper/nodeodm:2.2.3-odm3.6.0
     build:
       context: .
       dockerfile: docker/nodeodm.Dockerfile
+      args:
+        MAPPER_UID: ${MAPPER_UID:-1000}
+        MAPPER_GID: ${MAPPER_GID:-1000}
     command:
+      - --config
+      - /var/www/local-mapper-config.json
       - --port
       - "3000"
       - --parallel_queue_processing
       - "1"
       - --cleanup_tasks_after
-      - "0"
+      # NodeODM treats 0 as "delete immediately", not "disabled". One hundred
+      # years is effectively disabled while retaining the standard API.
+      - ${NODEODM_TASK_RETENTION_MINUTES:-52560000}
       - --cleanup_uploads_after
       - "10080"
       - --token
       - ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
+    environment:
+      NODEODM_TOKEN: ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
     volumes:
       - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}/nodeodm:/var/www/data
       - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}/logs/nodeodm:/var/www/logs
     deploy:
       <<: *gpu
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+    shm_size: "2gb"
+    stop_grace_period: 2m
     restart: unless-stopped
+    logging: *default-logging
+    <<: *service-security
     networks: [mapper-internal]
 
   splat-worker:
@@ -47,14 +125,25 @@ services:
       dockerfile: services/splat/Dockerfile
     environment:
       MAPPER_INTERNAL_TOKEN: ${MAPPER_INTERNAL_TOKEN:?Set MAPPER_INTERNAL_TOKEN in .env}
+      MAPPER_DATA_ROOT: /data
       SPLAT_STATE_ROOT: /data/splat
+      HOME: /data/splat/home
+      XDG_CACHE_HOME: /data/splat/home/.cache
       CUDA_VISIBLE_DEVICES: "0"
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    user: "${MAPPER_UID:-1000}:${MAPPER_GID:-1000}"
     volumes:
       - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}:/data
     deploy:
       <<: *gpu
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+    shm_size: "1gb"
+    stop_grace_period: 2m
     restart: unless-stopped
+    logging: *default-logging
+    <<: *service-security
     networks: [mapper-internal]
 
   api:
@@ -67,9 +156,12 @@ services:
       MAPPER_INTERNAL_TOKEN: ${MAPPER_INTERNAL_TOKEN:?Set MAPPER_INTERNAL_TOKEN in .env}
       MAPPER_COOKIE_SECURE: ${MAPPER_COOKIE_SECURE:-true}
       MAPPER_SESSION_HOURS: ${MAPPER_SESSION_HOURS:-24}
+      MAPPER_DISK_RESERVE_BYTES: ${MAPPER_DISK_RESERVE_BYTES:-5368709120}
+      HOME: /tmp
       NODEODM_URL: http://nodeodm:3000
       NODEODM_TOKEN: ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
       SPLAT_URL: http://splat-worker:8090
+    user: "${MAPPER_UID:-1000}:${MAPPER_GID:-1000}"
     volumes:
       - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}:/data
     depends_on:
@@ -77,7 +169,12 @@ services:
         condition: service_healthy
       splat-worker:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
+    stop_grace_period: 1m
     restart: unless-stopped
+    logging: *default-logging
+    <<: *service-security
     networks: [mapper-internal]
 
   frontend:
@@ -91,8 +188,11 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
-    networks: [mapper-internal]
+    logging: *default-logging
+    <<: *service-security
+    networks: [mapper-edge, mapper-internal]
 
 networks:
+  mapper-edge:
   mapper-internal:
     internal: true

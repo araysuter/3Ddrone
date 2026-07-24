@@ -20,7 +20,33 @@ export function ModelViewer({ url }: { url: string }) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.5));
+    let disposed = false;
+    let model: THREE.Object3D | null = null;
+
+    const disposeObject = (object: THREE.Object3D) => {
+      object.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const materials = Array.isArray(mesh.material)
+          ? mesh.material
+          : mesh.material
+            ? [mesh.material]
+            : [];
+        for (const material of materials) {
+          for (const value of Object.values(material)) {
+            if (value instanceof THREE.Texture) value.dispose();
+          }
+          material.dispose();
+        }
+      });
+    };
+
     new GLTFLoader().load(url, (gltf) => {
+      if (disposed) {
+        disposeObject(gltf.scene);
+        return;
+      }
+      model = gltf.scene;
       scene.add(gltf.scene);
       const box = new THREE.Box3().setFromObject(gltf.scene);
       const size = box.getSize(new THREE.Vector3()).length();
@@ -45,8 +71,11 @@ export function ModelViewer({ url }: { url: string }) {
     });
     resize.observe(host);
     return () => {
+      disposed = true;
       cancelAnimationFrame(frame);
       resize.disconnect();
+      controls.dispose();
+      if (model) disposeObject(model);
       renderer.dispose();
       renderer.domElement.remove();
     };

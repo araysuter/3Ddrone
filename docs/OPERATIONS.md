@@ -2,11 +2,11 @@
 
 ## Prerequisites
 
-Use Ubuntu 24.04 with Docker Engine and Compose v2, an NVIDIA driver compatible with the CUDA runtime pinned by `gpu.Dockerfile`, and NVIDIA Container Toolkit. Verify Docker GPU access before building:
+Use Ubuntu 24.04 with Docker Engine and Compose v2, an NVIDIA driver compatible with the CUDA runtime pinned by `gpu.Dockerfile`, and NVIDIA Container Toolkit. Configure Docker and verify GPU access before building:
 
 ```bash
 nvidia-smi
-sudo systemctl restart nvidia-persistenced
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 docker run --rm --gpus '"device=0"' nvidia/cuda:12.9.1-base-ubuntu24.04 nvidia-smi
 make host-check
@@ -17,14 +17,27 @@ The first ODM and Splatfacto image builds are large and can take a long time. Ke
 ## Start and stop
 
 ```bash
-make build
 make up
 docker compose ps
 make logs
 make down
 ```
 
+`make up` validates `.env`, builds all pinned images, performs the Ubuntu/GPU
+preflight, starts the stack, and waits for service health. `make build` remains
+available when an operator wants to separate the long first build from startup.
 `docker compose down` preserves all bind-mounted project data. Do not add `-v` unless you have separately verified what Docker will remove.
+
+For a CPU-only UI/API check on macOS or Linux:
+
+```bash
+make demo
+curl --fail http://127.0.0.1:8080/api/health
+make down
+```
+
+Demo mode does not start NodeODM or Splatfacto and does not prove the mapping
+pipeline.
 
 ### Missing NVIDIA persistence socket
 
@@ -37,6 +50,7 @@ failed to fulfil mount request: open /run/nvidia-persistenced/socket: no such fi
 the application images are already built; the host NVIDIA runtime is incomplete. Repair the host and retry:
 
 ```bash
+sudo systemctl status nvidia-persistenced
 sudo systemctl restart nvidia-persistenced
 test -S /run/nvidia-persistenced/socket
 sudo systemctl restart docker
@@ -44,7 +58,12 @@ make host-check
 make up
 ```
 
-If `nvidia-persistenced.service` is not installed, install the `nvidia-compute-utils` package matching the installed driver version. Do not create an empty socket file; it must be owned by the running NVIDIA daemon.
+`nvidia-persistenced.service` is commonly a static helper unit and is not meant
+to be enabled with `systemctl enable`; start or restart it only when the
+installed NVIDIA runtime configuration actually references its socket. If the
+unit is missing in that case, install the `nvidia-compute-utils` package
+matching the installed driver version. Do not create an empty socket file; it
+must be owned by the running NVIDIA daemon.
 
 ## Tailscale
 
@@ -81,7 +100,9 @@ Restore the entire configured data directory, not just `mapper.sqlite3`; databas
 
 ## Logs and disk
 
-Nginx and API logs use Docker’s configured log driver. NodeODM also keeps its own rotating logs under the retained data root. Check usage regularly:
+All container logs use Docker JSON-file rotation (three 50 MiB files per
+container). NodeODM also keeps three rotating 50 MiB application logs under
+`$MAPPER_DATA_DIR/logs/nodeodm`. Check usage regularly:
 
 ```bash
 docker compose logs --tail=300 api nodeodm splat-worker
@@ -89,6 +110,23 @@ du -sh /srv/local-aerial-mapper/*
 ```
 
 Projects are never automatically deleted. Use the confirmed UI deletion only after downloading or backing up anything that must be retained.
+
+Before diagnosing a container failure, validate the exact deployed
+configuration:
+
+```bash
+MAPPER_ENV_FILE=.env ./scripts/check-config.sh
+docker compose config --quiet
+docker compose ps
+docker compose logs --tail=300 api nodeodm splat-worker frontend
+```
+
+The configuration checker rejects relative or root data paths, placeholder,
+short, or duplicate service tokens, root/out-of-range container IDs, and
+invalid cookie/session/disk-reserve values before Docker mutates runtime state.
+The default upload/extraction reserve is 5 GiB. Lower
+`MAPPER_DISK_RESERVE_BYTES` only when the operator has deliberately accepted a
+smaller safety margin; the API refuses values below 1 GiB.
 
 ## Updating upstream
 

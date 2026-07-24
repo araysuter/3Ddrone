@@ -42,7 +42,7 @@ jspm_packages
 
 .vscode
 
-package-lock.json
+# Local Aerial Mapper pins production dependencies for reproducible builds.
 apps/
 nodeodm.exe
 dist/

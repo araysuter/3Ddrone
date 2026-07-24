@@ -13,13 +13,15 @@ def test_fc330_capture_summary(monkeypatch, tmp_path):
         path.write_bytes(b"\xff\xd8\xff")
         files.append(path)
         metadata[path.name] = {
-            "[EXIF]Model": "FC330",
-            "[EXIF]GPSLatitude": 42.1 + index / 10000,
-            "[EXIF]GPSLongitude": -83.7,
-            "[XMP]RelativeAltitude": 79.8 + (index % 4) / 10,
-            "[XMP]GimbalPitchDegree": -90 if index < 8 else -65,
-            "[File]ImageWidth": 4000,
-            "[File]ImageHeight": 2250,
+            # This is the exact grouped-key shape produced by
+            # `exiftool -j -n -G` in the API image.
+            "EXIF:Model": "FC330",
+            "EXIF:GPSLatitude": 42.1 + index / 10000,
+            "EXIF:GPSLongitude": -83.7,
+            "XMP:RelativeAltitude": 79.8 + (index % 4) / 10,
+            "XMP:GimbalPitchDegree": -90 if index < 8 else -65,
+            "File:ImageWidth": 4000,
+            "File:ImageHeight": 2250,
         }
     monkeypatch.setattr(inspection, "_exiftool", lambda path: metadata[path.name])
     summary = inspection.inspect_files(files)

@@ -1,4 +1,5 @@
-import type { Artifact, Project, SystemMetrics } from "../types";
+import type { AdvancedOption, Artifact, Project, SystemMetrics } from "../types";
+import { createSHA256 } from "hash-wasm";
 
 let csrfToken = "";
 
@@ -27,6 +28,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       message = payload.detail ?? payload.error ?? message;
     } catch {
       // Retain status text for non-JSON responses.
+    }
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("mapper:unauthorized"));
     }
     throw new ApiError(response.status, message);
   }
@@ -93,6 +97,18 @@ export const api = {
     request<{ elevation: number | null; crs: string }>(
       `/api/projects/${id}/elevation?layer=${layer}&x=${x}&y=${y}`,
     ),
+  rasterMetadata: (id: string, layer: "orthomosaic" | "dsm" | "dtm") =>
+    request<{
+      layer: string;
+      crs: string;
+      crs_proj4: string;
+      bounds: [number, number, number, number];
+      bounds_3857: [number, number, number, number];
+      min_zoom: number;
+      max_zoom: number;
+      tile_scheme: "tms";
+      units: string;
+    }>(`/api/projects/${id}/raster-metadata?layer=${layer}`),
   about: () =>
     request<{
       name: string;
@@ -101,13 +117,83 @@ export const api = {
       engines: Record<string, string>;
       warranty: string;
     }>("/api/about"),
+  options: () => request<{ options: AdvancedOption[] }>("/api/options"),
 };
 
 const CHUNK_SIZE = 5 * 1024 * 1024;
 
 async function sha256(file: File): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-  return [...new Uint8Array(hash)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  const hasher = await createSHA256();
+  hasher.init();
+  for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+    const chunk = await file.slice(offset, Math.min(file.size, offset + CHUNK_SIZE)).arrayBuffer();
+    hasher.update(new Uint8Array(chunk));
+    if (offset > 0 && offset % (64 * 1024 * 1024) === 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+  return hasher.digest("hex") as string;
+}
+
+function storageGet(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Uploads still work when browser storage is disabled.
+  }
+}
+
+function storageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing to recover when browser storage is disabled.
+  }
+}
+
+async function uploadStatus(uploadId: string, fileSize: number) {
+  let response: Response;
+  try {
+    response = await fetch(`/api/uploads/${uploadId}`, {
+      method: "HEAD",
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError(0, "Upload recovery could not reach the server");
+  }
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("mapper:unauthorized"));
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, "Upload recovery failed");
+  }
+  const offset = Number(response.headers.get("Upload-Offset") ?? 0);
+  if (!Number.isFinite(offset) || offset < 0 || offset > fileSize) {
+    throw new ApiError(409, "Server returned an invalid upload offset");
+  }
+  return { offset, state: response.headers.get("Upload-State") };
+}
+
+async function responseError(response: Response, fallback: string) {
+  let message = fallback;
+  try {
+    const payload = await response.json();
+    message = payload.detail ?? payload.error ?? fallback;
+  } catch {
+    // Retain the stable fallback when a proxy returns HTML or an empty body.
+  }
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("mapper:unauthorized"));
+  }
+  return new ApiError(response.status, message);
 }
 
 async function uploadFile(
@@ -116,23 +202,25 @@ async function uploadFile(
   onProgress: (file: File, progress: number) => void,
 ): Promise<void> {
   const recoveryKey = `mapper-upload:${projectId}:${file.name}:${file.size}`;
-  let uploadId = localStorage.getItem(recoveryKey);
+  let uploadId = storageGet(recoveryKey);
   let offset = 0;
   if (uploadId) {
-    const status = await fetch(`/api/uploads/${uploadId}`, {
-      method: "HEAD",
-      credentials: "include",
-    });
-    if (status.ok) {
-      offset = Number(status.headers.get("Upload-Offset") ?? 0);
-      if (status.headers.get("Upload-State") === "complete") {
-        localStorage.removeItem(recoveryKey);
+    try {
+      const status = await uploadStatus(uploadId, file.size);
+      offset = status.offset;
+      if (status.state === "complete") {
+        storageRemove(recoveryKey);
         onProgress(file, 1);
         return;
+      } else if (status.state !== "uploading") {
+        uploadId = null;
+        offset = 0;
+        storageRemove(recoveryKey);
       }
-    } else {
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 0) throw reason;
       uploadId = null;
-      localStorage.removeItem(recoveryKey);
+      storageRemove(recoveryKey);
     }
   }
   if (!uploadId) {
@@ -145,11 +233,12 @@ async function uploadFile(
     );
     uploadId = initialized.id;
     offset = initialized.offset;
-    localStorage.setItem(recoveryKey, uploadId);
+    storageSet(recoveryKey, uploadId);
   }
   while (offset < file.size) {
     const chunk = file.slice(offset, Math.min(file.size, offset + CHUNK_SIZE));
     let response: Response | undefined;
+    let recovered = false;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         response = await fetch(`/api/uploads/${uploadId}`, {
@@ -163,32 +252,42 @@ async function uploadFile(
           body: chunk,
         });
         if (response.ok || response.status === 409) break;
+        if (response.status < 500 || response.status >= 600) break;
       } catch {
-        // Re-query the durable server offset after a short connection loss.
+        try {
+          const status = await uploadStatus(uploadId, file.size);
+          if (status.offset !== offset) {
+            offset = status.offset;
+            onProgress(file, file.size === 0 ? 1 : offset / file.size);
+            recovered = true;
+            break;
+          }
+        } catch (reason) {
+          if (reason instanceof ApiError && reason.status === 401) throw reason;
+        }
       }
       await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
     }
+    if (recovered) continue;
     if (!response) throw new ApiError(0, "Upload connection could not be restored");
     if (response.status === 409) {
-      const recovered = await fetch(`/api/uploads/${uploadId}`, {
-        method: "HEAD",
-        credentials: "include",
-      });
-      if (!recovered.ok) throw new ApiError(recovered.status, "Upload recovery failed");
-      offset = Number(recovered.headers.get("Upload-Offset") ?? 0);
+      offset = (await uploadStatus(uploadId, file.size)).offset;
       continue;
     }
     if (!response.ok) {
-      throw new ApiError(response.status, (await response.json()).detail ?? "Upload failed");
+      throw await responseError(response, "Upload failed");
     }
     offset = Number(response.headers.get("Upload-Offset"));
+    if (!Number.isFinite(offset) || offset < 0 || offset > file.size) {
+      throw new ApiError(409, "Server returned an invalid upload offset");
+    }
     onProgress(file, offset / file.size);
   }
   await request(`/api/uploads/${uploadId}/complete`, {
     method: "POST",
     body: JSON.stringify({ sha256: await sha256(file) }),
   });
-  localStorage.removeItem(recoveryKey);
+  storageRemove(recoveryKey);
 }
 
 export async function uploadFiles(
@@ -197,11 +296,18 @@ export async function uploadFiles(
   onProgress: (file: File, progress: number) => void,
 ): Promise<void> {
   const work = [...files];
+  let firstError: unknown;
   const workers = Array.from({ length: Math.min(3, work.length) }, async () => {
     while (work.length) {
       const file = work.shift();
-      if (file) await uploadFile(projectId, file, onProgress);
+      if (!file) continue;
+      try {
+        await uploadFile(projectId, file, onProgress);
+      } catch (reason) {
+        firstError ??= reason;
+      }
     }
   });
   await Promise.all(workers);
+  if (firstError) throw firstError;
 }

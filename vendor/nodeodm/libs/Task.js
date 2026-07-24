@@ -31,7 +31,6 @@ const processRunner = require('./processRunner');
 const Directories = require('./Directories');
 const kill = require('tree-kill');
 const S3 = require('./S3');
-const request = require('request');
 const utils = require('./utils');
 const archiver = require('archiver');
 
@@ -686,40 +685,10 @@ module.exports = class Task{
     }
 
     callWebhooks(){
-        // Hooks can be passed via command line 
-        // or for each individual task
         const hooks = [this.webhook, config.webhook];
-
-        this.readImagesDatabase((err, images) => {
-            if (err) logger.warn(err); // Continue with callback
-            if (!images) images = [];
-
-            let json = this.getInfo();
-            json.images = images;
-
-            hooks.forEach(hook => {
-                if (hook && hook.length > 3){
-                    const notifyCallback = (attempt) => {
-                        if (attempt > 5){
-                            logger.warn(`Webhook invokation failed, will not retry: ${hook}`);
-                            return;
-                        }
-                        request.post(hook, { json },
-                            (error, response) => {
-                                if (error || response.statusCode != 200){
-                                    logger.warn(`Webhook invokation failed, will retry in a bit: ${hook}`);
-                                    setTimeout(() => {
-                                        notifyCallback(attempt + 1);
-                                    }, attempt * 5000);
-                                }else{
-                                    logger.debug(`Webhook invoked: ${hook}`);
-                                }
-                        });
-                    };
-                    notifyCallback(0);
-                }
-            });
-        });
+        if (hooks.some(hook => hook && hook.length > 3)){
+            logger.warn("Webhooks are disabled in Local Aerial Mapper");
+        }
     }
 
     // Returns the data necessary to serialize this

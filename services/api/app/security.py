@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, exceptions as argon2_exceptions
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
 
 from .config import settings
@@ -12,6 +13,8 @@ from .db import one, transaction, utcnow
 
 hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 SESSION_COOKIE = "mapper_session"
+LOGIN_WINDOW = timedelta(minutes=15)
+_dummy_password_hash = hasher.hash(secrets.token_urlsafe(32))
 
 
 def token_hash(token: str) -> str:
@@ -27,11 +30,14 @@ def create_admin(username: str, password: str) -> None:
         raise HTTPException(status_code=409, detail="Administrator setup is already complete")
     if len(username.strip()) < 3 or len(password) < 12:
         raise HTTPException(status_code=422, detail="Use a username of 3+ characters and password of 12+ characters")
-    with transaction() as db:
-        db.execute(
-            "INSERT INTO admins(id,username,password_hash,created_at) VALUES(1,?,?,?)",
-            (username.strip(), hasher.hash(password), utcnow()),
-        )
+    try:
+        with transaction() as db:
+            db.execute(
+                "INSERT INTO admins(id,username,password_hash,created_at) VALUES(1,?,?,?)",
+                (username.strip(), hasher.hash(password), utcnow()),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="Administrator setup is already complete") from exc
 
 
 def check_login_throttle(address: str) -> None:
@@ -44,9 +50,12 @@ def check_login_throttle(address: str) -> None:
 
 def record_login(address: str, succeeded: bool) -> None:
     now = datetime.now(timezone.utc)
-    existing = one("SELECT failures FROM login_attempts WHERE address=?", (address,))
-    failures = 0 if succeeded else int(existing["failures"] if existing else 0) + 1
-    blocked = (now + timedelta(minutes=15)).isoformat() if failures >= 5 else None
+    existing = one("SELECT failures,updated_at FROM login_attempts WHERE address=?", (address,))
+    previous_failures = int(existing["failures"]) if existing else 0
+    if existing and now - datetime.fromisoformat(existing["updated_at"]) >= LOGIN_WINDOW:
+        previous_failures = 0
+    failures = 0 if succeeded else previous_failures + 1
+    blocked = (now + LOGIN_WINDOW).isoformat() if failures >= 5 else None
     with transaction() as db:
         db.execute(
             """
@@ -63,12 +72,16 @@ def record_login(address: str, succeeded: bool) -> None:
 
 def verify_admin(username: str, password: str) -> bool:
     admin = one("SELECT * FROM admins WHERE id=1")
-    if not admin or not secrets.compare_digest(admin["username"], username.strip()):
-        return False
+    expected_username = admin["username"] if admin else ""
+    password_hash = admin["password_hash"] if admin else _dummy_password_hash
     try:
-        return hasher.verify(admin["password_hash"], password)
+        password_valid = hasher.verify(password_hash, password)
+    except argon2_exceptions.VerificationError:
+        password_valid = False
     except Exception:
-        return False
+        password_valid = False
+    username_valid = bool(admin) and secrets.compare_digest(expected_username, username.strip())
+    return username_valid and password_valid
 
 
 def start_session(response: Response) -> str:
@@ -103,7 +116,11 @@ def require_session(mapper_session: str | None = Cookie(default=None)) -> dict:
     if not mapper_session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
     session = one("SELECT * FROM sessions WHERE token_hash=?", (token_hash(mapper_session),))
-    if not session or datetime.fromisoformat(session["expires_at"]) <= datetime.now(timezone.utc):
+    if not session:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
+    if datetime.fromisoformat(session["expires_at"]) <= datetime.now(timezone.utc):
+        with transaction() as db:
+            db.execute("DELETE FROM sessions WHERE token_hash=?", (session["token_hash"],))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
     return session
 

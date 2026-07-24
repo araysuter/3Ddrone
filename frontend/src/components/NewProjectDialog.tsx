@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   ChevronDown,
@@ -10,6 +10,8 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import { api } from "../lib/api";
+import type { AdvancedOption } from "../types";
 
 interface Props {
   open: boolean;
@@ -19,6 +21,7 @@ interface Props {
     name: string;
     preset: string;
     outputs: Record<string, boolean>;
+    advanced: Record<string, unknown>;
     files: File[];
   }) => Promise<void>;
 }
@@ -62,9 +65,34 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
   const [outputs, setOutputs] = useState<Record<string, boolean>>(
     Object.fromEntries(outputChoices.map(([id]) => [id, true])),
   );
-  const [advanced, setAdvanced] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOptions, setAdvancedOptions] = useState<AdvancedOption[]>();
+  const [advancedValues, setAdvancedValues] = useState<Record<string, unknown>>({});
+  const [advancedError, setAdvancedError] = useState("");
+  const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const totalSize = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files]);
+
+  useEffect(() => {
+    if (!open || !advancedOpen || advancedOptions) return;
+    let disposed = false;
+    setAdvancedError("");
+    void api
+      .options()
+      .then((result) => {
+        if (!disposed) setAdvancedOptions(result.options);
+      })
+      .catch((reason: unknown) => {
+        if (!disposed) {
+          setAdvancedError(
+            reason instanceof Error ? reason.message : "ODM option metadata is unavailable",
+          );
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [open, advancedOpen, advancedOptions]);
 
   if (!open) return null;
 
@@ -82,12 +110,56 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
     addFiles(event.dataTransfer.files);
   }
 
+  function setOutput(id: string, checked: boolean) {
+    setOutputs((current) => {
+      const next = { ...current, [id]: checked };
+      if (id === "dtm" && checked) next.point_cloud = true;
+      if (id === "splat" && checked) next.raw = true;
+      if (id === "point_cloud" && !checked) next.dtm = false;
+      if (id === "raw" && !checked) next.splat = false;
+      return next;
+    });
+  }
+
+  function enableAdvanced(option: AdvancedOption, enabled: boolean) {
+    setAdvancedValues((current) => {
+      const next = { ...current };
+      if (!enabled) {
+        delete next[option.name];
+      } else if (option.type === "bool") {
+        next[option.name] = true;
+      } else if (option.type === "int") {
+        const parsed = Number.parseInt(option.value, 10) || 0;
+        next[option.name] = option.name === "max-concurrency" ? Math.max(1, parsed) : parsed;
+      } else if (option.type === "float") {
+        next[option.name] = Number.parseFloat(option.value) || 0;
+      } else {
+        next[option.name] = option.value;
+      }
+      return next;
+    });
+  }
+
+  function setAdvancedValue(option: AdvancedOption, rawValue: string) {
+    let value: unknown = rawValue;
+    if (option.type === "int") value = Number.parseInt(rawValue, 10) || 0;
+    if (option.type === "float") value = Number.parseFloat(rawValue) || 0;
+    setAdvancedValues((current) => ({ ...current, [option.name]: value }));
+  }
+
   async function create() {
-    if (!name.trim() || !files.length || busy) return;
-    await onCreate({ name: name.trim(), preset, outputs, files });
-    setName("");
-    setFiles([]);
-    setPreset("high");
+    if (!name.trim() || !files.length || !Object.values(outputs).some(Boolean) || busy) return;
+    setError("");
+    try {
+      await onCreate({ name: name.trim(), preset, outputs, advanced: advancedValues, files });
+      setName("");
+      setFiles([]);
+      setPreset("high");
+      setAdvancedValues({});
+      setAdvancedOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Project could not be created");
+    }
   }
 
   return (
@@ -129,7 +201,7 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
               hidden
               type="file"
               multiple
-              accept=".jpg,.jpeg,.dng,.tif,.tiff,.mp4,.mov,.lchm,.txt,.geo,.las,.laz"
+              accept=".jpg,.jpeg,.dng,.tif,.tiff,.mp4,.mov,.lrv,.ts,.srt,.lchm,.txt,.las,.laz"
               onChange={(event: ChangeEvent<HTMLInputElement>) => addFiles(event.target.files)}
             />
             <UploadCloud size={25} strokeWidth={1.5} />
@@ -177,9 +249,7 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
                   <input
                     type="checkbox"
                     checked={outputs[id]}
-                    onChange={(event) =>
-                      setOutputs((current) => ({ ...current, [id]: event.target.checked }))
-                    }
+                    onChange={(event) => setOutput(id, event.target.checked)}
                   />
                   <Icon size={15} />
                   {label}
@@ -187,16 +257,78 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
               ))}
             </div>
           </fieldset>
-          <button className="advanced-toggle" onClick={() => setAdvanced((value) => !value)}>
-            <ChevronDown className={advanced ? "rotated" : ""} size={15} />
+          <button
+            type="button"
+            className="advanced-toggle"
+            onClick={() => setAdvancedOpen((value) => !value)}
+          >
+            <ChevronDown className={advancedOpen ? "rotated" : ""} size={15} />
             Advanced ODM options
           </button>
-          {advanced && (
-            <div className="advanced-note">
-              Safe engine options become available after NodeODM reports its current metadata. Path,
-              cluster, rerun-stage and resource-bypass flags are intentionally blocked.
+          {advancedOpen && (
+            <div className="advanced-panel">
+              <p className="advanced-note">
+                Only server-allowlisted options from this NodeODM engine are shown. Path, cluster,
+                rerun-stage and resource-bypass flags are blocked.
+              </p>
+              {!advancedOptions && !advancedError && (
+                <div className="advanced-status">Loading current ODM option metadata…</div>
+              )}
+              {advancedError && <div className="form-error">{advancedError}</div>}
+              {advancedOptions?.map((option) => {
+                const enabled = Object.hasOwn(advancedValues, option.name);
+                const value = advancedValues[option.name];
+                return (
+                  <div className="advanced-option" key={option.name}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(event) => enableAdvanced(option, event.target.checked)}
+                      />
+                      <span>
+                        <strong>{option.name}</strong>
+                        <small>{option.help}</small>
+                      </span>
+                    </label>
+                    {enabled && option.type !== "bool" && Array.isArray(option.domain) && (
+                      <select
+                        aria-label={`${option.name} value`}
+                        value={String(value)}
+                        onChange={(event) => setAdvancedValue(option, event.target.value)}
+                      >
+                        {option.domain.map((choice) => (
+                          <option value={choice} key={choice}>
+                            {choice}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {enabled &&
+                      option.type !== "bool" &&
+                      !Array.isArray(option.domain) && (
+                        <input
+                          aria-label={`${option.name} value`}
+                          type={option.type === "int" || option.type === "float" ? "number" : "text"}
+                          step={option.type === "int" ? 1 : option.type === "float" ? "any" : undefined}
+                          value={String(value)}
+                          onChange={(event) => setAdvancedValue(option, event.target.value)}
+                        />
+                      )}
+                    {enabled && option.name === "max-concurrency" && (
+                      <em>Overrides the automatic RAM-safe limit. Increase only after monitoring memory.</em>
+                    )}
+                  </div>
+                );
+              })}
+              {advancedOptions?.length === 0 && (
+                <div className="advanced-status">
+                  NodeODM is unavailable or reported no allowlisted options.
+                </div>
+              )}
             </div>
           )}
+          {error && <div className="form-error">{error}</div>}
         </div>
         <footer className="modal-footer">
           <span>Files are retained locally until you confirm project deletion.</span>
@@ -206,7 +338,7 @@ export function NewProjectDialog({ open, busy, onClose, onCreate }: Props) {
             </button>
             <button
               className="button primary"
-              disabled={busy || !name.trim() || !files.length}
+              disabled={busy || !name.trim() || !files.length || !Object.values(outputs).some(Boolean)}
               onClick={create}
             >
               <UploadCloud size={15} />

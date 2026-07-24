@@ -1,14 +1,13 @@
 import {
   AlertTriangle,
   Box,
-  CheckCircle2,
   MoreVertical,
   Play,
   RotateCcw,
   Square,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Project, SystemMetrics } from "../types";
 import { ProcessingView } from "./ProcessingView";
@@ -20,12 +19,21 @@ interface Props {
   uploadProgress?: number;
   metrics?: SystemMetrics;
   onChanged: () => Promise<void>;
+  onResumeUploads: (project: Project, files: File[]) => Promise<void>;
 }
 
-export function Workspace({ project, logs, uploadProgress, metrics, onChanged }: Props) {
+export function Workspace({
+  project,
+  logs,
+  uploadProgress,
+  metrics,
+  onChanged,
+  onResumeUploads,
+}: Props) {
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const resumeInput = useRef<HTMLInputElement>(null);
 
   if (!project) {
     return (
@@ -43,6 +51,10 @@ export function Workspace({ project, logs, uploadProgress, metrics, onChanged }:
   const currentProject = project;
   const isActive = ["queued", "processing", "splatting"].includes(project.status);
   const hasResults = ["completed", "partial"].includes(project.status);
+  const needsUploadRecovery =
+    ["uploading", "failed", "canceled"].includes(project.status) &&
+    uploadProgress === undefined &&
+    (!project.uploads?.length || project.uploads.some((upload) => upload.state !== "complete"));
 
   async function action(callback: () => Promise<unknown>) {
     setBusy(true);
@@ -77,6 +89,27 @@ export function Workspace({ project, logs, uploadProgress, metrics, onChanged }:
           </div>
         </div>
         <div className="workspace-actions">
+          <input
+            ref={resumeInput}
+            hidden
+            type="file"
+            multiple
+            accept=".jpg,.jpeg,.dng,.tif,.tiff,.mp4,.mov,.lrv,.ts,.srt,.lchm,.txt,.las,.laz"
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (files.length) void action(() => onResumeUploads(currentProject, files));
+            }}
+          />
+          {needsUploadRecovery && (
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => resumeInput.current?.click()}
+            >
+              <Play size={14} /> Resume upload
+            </button>
+          )}
           {isActive && (
             <button className="button secondary danger-text" disabled={busy} onClick={() => action(() => api.cancelProject(project.id))}>
               <Square size={13} /> Cancel
@@ -87,7 +120,9 @@ export function Workspace({ project, logs, uploadProgress, metrics, onChanged }:
               <RotateCcw size={14} /> Retry splat
             </button>
           )}
-          {["uploading", "failed", "canceled"].includes(project.status) && project.uploads?.some((upload) => upload.state === "complete") && (
+          {["uploading", "failed", "canceled"].includes(project.status) &&
+            !project.uploads?.some((upload) => upload.state === "uploading") &&
+            project.uploads?.some((upload) => upload.state === "complete") && (
             <button className="button primary" disabled={busy} onClick={() => action(() => api.startProject(project.id))}>
               <Play size={14} /> Start processing
             </button>

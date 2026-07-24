@@ -76,6 +76,14 @@ export interface Preset {
   splat: Record<string, unknown>;
 }
 
+export interface AdvancedOption {
+  name: string;
+  type: "int" | "float" | "string" | "bool" | "enum";
+  value: string;
+  domain: string | string[];
+  help: string;
+}
+
 export interface SystemMetrics {
   cpu_percent: number;
   logical_cores: number;

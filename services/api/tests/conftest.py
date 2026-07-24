@@ -11,6 +11,7 @@ os.environ["MAPPER_DATA_ROOT"] = str(TEST_DATA_ROOT)
 os.environ["MAPPER_COOKIE_SECURE"] = "false"
 os.environ["MAPPER_DEMO_MODE"] = "true"
 os.environ["MAPPER_INTERNAL_TOKEN"] = "test-internal-token"
+os.environ["MAPPER_DISK_RESERVE_BYTES"] = str(1024**3)
 
 from app.config import settings
 from app.db import init_db, transaction

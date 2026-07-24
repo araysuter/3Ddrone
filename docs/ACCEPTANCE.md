@@ -5,13 +5,23 @@ The macOS development host can validate application logic and the rendered UI, b
 ## Automated checks
 
 ```bash
-PYTHONPATH=services/api services/api/.venv/bin/pytest -q services/api/tests
+npm --prefix frontend ci
+PYTHONPATH=services/api services/api/.venv/bin/python -m pytest -q services/api/tests
+npm --prefix frontend run lint
 npm --prefix frontend run build
-MAPPER_DATA_DIR=/tmp/mapper-config-check \
-  NODEODM_TOKEN=test \
-  MAPPER_INTERNAL_TOKEN=test-internal \
-  docker compose config --quiet
+MAPPER_ENV_FILE=.env ./scripts/check-config.sh
+docker compose config --quiet
+git diff --check
 ```
+
+Both service tokens in `.env` must be different, non-placeholder values of at
+least 32 characters, and `MAPPER_UID`/`MAPPER_GID` must match the account that
+owns the retained data directory.
+
+For a non-CUDA application smoke test, run `make demo`, complete first-user
+setup, create a project, upload/resume files, inspect the live stages and logs,
+and check `/api/health`. This proves the Docker/API/browser path only; it does
+not satisfy any GPU or reconstruction acceptance item.
 
 ## GPU smoke
 
@@ -39,6 +49,13 @@ The intake summary must report:
 - 33 ms rolling-shutter correction
 - best-effort consumer-GPS accuracy
 
+If these fields are blank, verify the grouped ExifTool keys directly before
+processing:
+
+```bash
+exiftool -j -n -G "Sample Mapping/Images/DJI_0192.JPG"
+```
+
 Inspect NodeODM output and pass only if:
 
 - CUDA SIFT is selected and used.
@@ -65,6 +82,11 @@ At 1440×900 and 1280×720:
 7. Compare distance, area, and DSM/DTM samples against QGIS.
 8. Force a splat failure and confirm ODM results remain available with a separate retry.
 9. Restart each container during its owned stage and verify reconciliation.
+10. Open the Advanced drawer and verify only the server allowlist appears;
+    path, cluster, copy, rerun-stage, `ignore-gsd`, and resource-bypass options
+    must be absent.
+11. Check the browser console for errors and verify the two-column Outputs grid
+    has complete borders at the narrower viewport.
 
 ## Stop conditions
 
