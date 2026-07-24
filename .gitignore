@@ -3,6 +3,8 @@ Sample Mapping/
 bin/
 include/
 lib/
+!frontend/src/lib/
+!frontend/src/lib/**
 logs/
 share/
 
