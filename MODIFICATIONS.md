@@ -6,7 +6,7 @@ This repository combines OpenDroneMap with a local application layer. The follow
 
 - OpenDroneMap was merged from the official `v3.6.0` tag. No processing algorithm or stage under `opendm/`, `stages/`, `run.py`, or `SuperBuild/` has been modified by the mapper application.
 - `gpu.Dockerfile` backports the GPU container compatibility portion of upstream ODM commit `44e3ff6e` (CUDA 12.9.1, the runtime image, Python paths, and Ubuntu 24.04's TBB runtime package). This avoids OpenMVS compilation against CUDA 13, which removed `cuda_texture_types.h`.
-- NodeODM was vendored from the official `v2.2.3` tag at commit `baa619a9fd42bf32daf45fc03257f8e9b92449d4`. Its standard task and output APIs remain the orchestrator boundary, but the vendored source is intentionally modified: remote ZIP ingestion, task webhooks, and S3 export are disabled; vulnerable direct dependencies were removed or upgraded; UUID import compatibility was updated; and a production lockfile was added.
+- NodeODM was vendored from the official `v2.2.3` tag at commit `baa619a9fd42bf32daf45fc03257f8e9b92449d4`. Its standard task and output APIs remain the orchestrator boundary, but the vendored source is intentionally modified: remote ZIP ingestion, task webhooks, and S3 export are disabled; vulnerable direct dependencies were removed or upgraded; UUID and Python 3.12 import compatibility were updated; startup-helper errors are preserved; and a production lockfile was added.
 - The original ODM README is retained at `docs/upstream/ODM-README.md`.
 
 ## Added application code

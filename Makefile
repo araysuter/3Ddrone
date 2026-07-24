@@ -25,7 +25,13 @@ host-check:
 up: config-check
 	./scripts/check-host.sh
 	$(MAKE) build-images
-	docker compose up -d --remove-orphans --wait --wait-timeout 300
+	@docker compose up -d --remove-orphans --wait --wait-timeout 300 || { \
+		status=$$?; \
+		echo "Container startup failed; current status and recent logs follow." >&2; \
+		docker compose ps -a >&2 || true; \
+		docker compose logs --no-color --tail=200 nodeodm splat-worker api frontend >&2 || true; \
+		exit $$status; \
+	}
 
 down:
 	docker compose down

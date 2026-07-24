@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import httpx
 import pytest
@@ -21,6 +24,44 @@ def test_nodeodm_image_reuses_an_existing_numeric_runtime_identity():
     assert 'if ! getent passwd "${MAPPER_UID}"' in dockerfile
     assert "USER ${MAPPER_UID}:${MAPPER_GID}" in dockerfile
     assert "\nUSER odm\n" not in dockerfile
+
+
+def test_nodeodm_option_helper_supports_python_312(tmp_path):
+    odm_root = tmp_path / "odm"
+    package = odm_root / "opendm"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "config.py").write_text(
+        "def config(parser=None):\n"
+        "    parser.add_argument('--quality', default='high', type=str)\n"
+    )
+    destination = tmp_path / "options.json"
+    helper = (
+        Path(__file__).resolve().parents[3]
+        / "vendor"
+        / "nodeodm"
+        / "helpers"
+        / "odmOptionsToJson.py"
+    )
+    env = {**os.environ, "ODM_OPTIONS_TMP_FILE": str(destination)}
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(helper),
+            "--project-path",
+            str(odm_root),
+            "bogusname",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert json.loads(destination.read_text())["--quality"]["default"] == "high"
 
 
 @pytest.mark.asyncio

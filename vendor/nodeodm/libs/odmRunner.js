@@ -129,6 +129,11 @@ module.exports = {
             env.ODM_PATH = config.odm_path;
             let childProcess = spawn(pythonExe, [path.join(__dirname, "..", "helpers", "odmOptionsToJson.py"),
                     "--project-path", config.odm_path, "bogusname"], { env });
+            let stderr = "";
+            childProcess.stdout.on("data", () => {});
+            childProcess.stderr.on("data", chunk => {
+                stderr += chunk.toString();
+            });
     
             // Cleanup on done
             let handleResult = (err, result) => {
@@ -146,7 +151,13 @@ module.exports = {
                 .on('exit', (code, signal) => {
                     try{
                         fs.readFile(env.ODM_OPTIONS_TMP_FILE, { encoding: "utf8" }, (err, data) => {
-                            if (err) handleResult(new Error(`Cannot read list of options from ODM (from temporary file). Is ODM installed in ${config.odm_path}?`));
+                            if (err) {
+                                const detail = stderr.trim();
+                                handleResult(new Error(
+                                    `Cannot read list of options from ODM (from temporary file). Is ODM installed in ${config.odm_path}?` +
+                                    (detail ? `\n${detail}` : "")
+                                ));
+                            }
                             else{
                                 let json = JSON.parse(data);
                                 handleResult(null, json);
