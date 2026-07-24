@@ -7,7 +7,7 @@ logs/
 share/
 
 
-src/
+/src/
 
 !modules/*
 

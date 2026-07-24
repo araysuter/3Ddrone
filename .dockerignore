@@ -11,6 +11,13 @@ odm_meshing
 odm_georeferencing
 images_resize
 .git
+.env
+Sample Mapping
+data
+frontend/dist
+frontend/node_modules
+services/api/.venv
+services/**/__pycache__
 
 /contrib
 /docs

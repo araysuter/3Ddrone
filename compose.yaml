@@ -1,0 +1,98 @@
+name: local-aerial-mapper
+
+x-gpu: &gpu
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          device_ids: ["0"]
+          capabilities: [gpu]
+
+services:
+  odm-gpu:
+    profiles: ["build-only"]
+    image: local-aerial-mapper/odm:3.6.0-gpu
+    build:
+      context: .
+      dockerfile: gpu.Dockerfile
+
+  nodeodm:
+    image: local-aerial-mapper/nodeodm:2.2.3-odm3.6.0
+    build:
+      context: .
+      dockerfile: docker/nodeodm.Dockerfile
+    command:
+      - --port
+      - "3000"
+      - --parallel_queue_processing
+      - "1"
+      - --cleanup_tasks_after
+      - "0"
+      - --cleanup_uploads_after
+      - "10080"
+      - --token
+      - ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
+    volumes:
+      - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}/nodeodm:/var/www/data
+      - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}/logs/nodeodm:/var/www/logs
+    deploy:
+      <<: *gpu
+    restart: unless-stopped
+    networks: [mapper-internal]
+
+  splat-worker:
+    image: local-aerial-mapper/splat:nerfstudio-1.1.5
+    build:
+      context: .
+      dockerfile: services/splat/Dockerfile
+    environment:
+      MAPPER_INTERNAL_TOKEN: ${MAPPER_INTERNAL_TOKEN:?Set MAPPER_INTERNAL_TOKEN in .env}
+      SPLAT_STATE_ROOT: /data/splat
+      CUDA_VISIBLE_DEVICES: "0"
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    volumes:
+      - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}:/data
+    deploy:
+      <<: *gpu
+    restart: unless-stopped
+    networks: [mapper-internal]
+
+  api:
+    image: local-aerial-mapper/api:0.1.0
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      MAPPER_DATA_ROOT: /data
+      MAPPER_INTERNAL_TOKEN: ${MAPPER_INTERNAL_TOKEN:?Set MAPPER_INTERNAL_TOKEN in .env}
+      MAPPER_COOKIE_SECURE: ${MAPPER_COOKIE_SECURE:-true}
+      MAPPER_SESSION_HOURS: ${MAPPER_SESSION_HOURS:-24}
+      NODEODM_URL: http://nodeodm:3000
+      NODEODM_TOKEN: ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
+      SPLAT_URL: http://splat-worker:8090
+    volumes:
+      - ${MAPPER_DATA_DIR:?Set MAPPER_DATA_DIR in .env}:/data
+    depends_on:
+      nodeodm:
+        condition: service_healthy
+      splat-worker:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [mapper-internal]
+
+  frontend:
+    image: local-aerial-mapper/frontend:0.1.0
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [mapper-internal]
+
+networks:
+  mapper-internal:
+    internal: true

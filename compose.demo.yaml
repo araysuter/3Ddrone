@@ -1,0 +1,8 @@
+services:
+  api:
+    environment:
+      MAPPER_DEMO_MODE: "true"
+      MAPPER_COOKIE_SECURE: "false"
+  splat-worker:
+    environment:
+      SPLAT_DRY_RUN: "true"
