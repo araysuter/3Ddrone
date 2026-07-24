@@ -16,27 +16,49 @@ command -v nvidia-smi >/dev/null 2>&1 || fail "the NVIDIA driver utilities are n
 nvidia-smi >/dev/null 2>&1 || fail "the NVIDIA driver cannot communicate with GPU 0"
 
 socket_path=/run/nvidia-persistenced/socket
-socket_is_configured=false
+socket_references=()
 for config_root in /etc/cdi /var/run/cdi /etc/nvidia-container-runtime; do
-    if [[ -d "$config_root" ]] \
-        && grep -R -s -q "$socket_path" "$config_root"; then
-        socket_is_configured=true
-        break
+    if [[ ! -d "$config_root" ]]; then
+        continue
     fi
+
+    while IFS= read -r reference; do
+        [[ -n "$reference" ]] && socket_references+=("$reference")
+    done < <(grep -R -s -l -- "$socket_path" "$config_root" 2>/dev/null || true)
 done
 
-if [[ "$socket_is_configured" == true && ! -S "$socket_path" ]]; then
+if (( ${#socket_references[@]} > 0 )) && [[ ! -S "$socket_path" ]]; then
     cat >&2 <<'EOF'
 Host GPU preflight failed: NVIDIA Container Toolkit is configured to mount
 /run/nvidia-persistenced/socket, but that socket does not exist.
+EOF
 
-Repair it on Ubuntu, then rerun `make up`:
+    printf '\nConfiguration files referencing the missing socket:\n' >&2
+    printf '  %s\n' "${socket_references[@]}" >&2
+
+    cat >&2 <<'EOF'
+
+First inspect why the daemon could not start:
+
+  sudo systemctl status nvidia-persistenced --no-pager -l
+  sudo journalctl -u nvidia-persistenced -n 100 --no-pager
+
+If host `nvidia-smi` works and the listed file is a generated CDI specification,
+refresh the specification before retrying:
+
+  sudo systemctl restart nvidia-cdi-refresh.service
+  nvidia-ctk --debug cdi list
+  sudo systemctl restart docker
+
+Otherwise repair and start the persistence daemon:
 
   sudo systemctl restart nvidia-persistenced
   sudo systemctl restart docker
 
-If the service unit is missing, install the nvidia-compute-utils package that
-matches the installed NVIDIA driver, then start the service.
+The CDI refresh service is provided by NVIDIA Container Toolkit 1.18 and newer.
+On an older toolkit, regenerate the NVIDIA CDI file shown above with
+`nvidia-ctk cdi generate --output=<that-cdi-file>`. Do not create an empty
+socket file; it must be owned by the running NVIDIA daemon.
 EOF
     exit 1
 fi

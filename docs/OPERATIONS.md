@@ -23,9 +23,12 @@ make logs
 make down
 ```
 
-`make up` validates `.env`, builds all pinned images, performs the Ubuntu/GPU
-preflight, starts the stack, and waits for service health. `make build` remains
+`make up` validates `.env`, performs the Ubuntu/GPU preflight, builds all pinned
+images, starts the stack, and waits for service health. `make build` remains
 available when an operator wants to separate the long first build from startup.
+Once `local-aerial-mapper/odm:3.6.0-gpu` exists, ordinary application pulls
+reuse it rather than recompiling ODM. Run `make rebuild-odm` only when
+`gpu.Dockerfile`, ODM itself, or its native dependencies intentionally change.
 `docker compose down` preserves all bind-mounted project data. Do not add `-v` unless you have separately verified what Docker will remove.
 
 For a CPU-only UI/API check on macOS or Linux:
@@ -47,10 +50,37 @@ If container startup fails with:
 failed to fulfil mount request: open /run/nvidia-persistenced/socket: no such file or directory
 ```
 
-the application images are already built; the host NVIDIA runtime is incomplete. Repair the host and retry:
+the host NVIDIA runtime is incomplete. The preflight now catches this before
+any long image build. First inspect why the daemon could not start:
 
 ```bash
-sudo systemctl status nvidia-persistenced
+sudo systemctl status nvidia-persistenced --no-pager -l
+sudo journalctl -u nvidia-persistenced -n 100 --no-pager
+```
+
+If host `nvidia-smi` succeeds and the preflight lists a generated CDI
+specification under `/etc/cdi` or `/var/run/cdi`, refresh it:
+
+```bash
+sudo systemctl restart nvidia-cdi-refresh.service
+nvidia-ctk --debug cdi list
+sudo systemctl restart docker
+make host-check
+```
+
+NVIDIA Container Toolkit 1.18 and newer normally manages
+`/var/run/cdi/nvidia.yaml` through `nvidia-cdi-refresh`. On an older toolkit,
+regenerate the specific CDI file printed by the preflight with:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/path/printed/by/preflight
+sudo systemctl restart docker
+make host-check
+```
+
+If the configuration is current and the daemon is required, repair it and retry:
+
+```bash
 sudo systemctl restart nvidia-persistenced
 test -S /run/nvidia-persistenced/socket
 sudo systemctl restart docker

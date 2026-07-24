@@ -1,8 +1,19 @@
-.PHONY: build config-check host-check up down logs demo gpu-smoke test
+.PHONY: build build-images odm-base rebuild-odm config-check host-check up down logs demo gpu-smoke test
 
-build: config-check
-	docker compose --profile build-only build odm-gpu
+build: config-check build-images
+
+build-images: odm-base
 	docker compose build nodeodm splat-worker api frontend
+
+odm-base:
+	@if docker image inspect local-aerial-mapper/odm:3.6.0-gpu >/dev/null 2>&1; then \
+		echo "Using existing pinned ODM 3.6.0 GPU image."; \
+	else \
+		docker compose --profile build-only build odm-gpu; \
+	fi
+
+rebuild-odm: config-check
+	docker compose --profile build-only build odm-gpu
 
 config-check:
 	./scripts/check-config.sh
@@ -11,8 +22,9 @@ config-check:
 host-check:
 	./scripts/check-host.sh
 
-up: config-check build
+up: config-check
 	./scripts/check-host.sh
+	$(MAKE) build-images
 	docker compose up -d --remove-orphans --wait --wait-timeout 300
 
 down:

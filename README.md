@@ -63,7 +63,8 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
    `nvidia-persistenced.service` is a static helper unit on many Ubuntu
    installations, so do not try to enable it. The host preflight only requires
    it to be running when the installed NVIDIA runtime configuration explicitly
-   mounts its socket.
+   mounts its socket. If a generated CDI specification is stale, the preflight
+   identifies the exact file and prints the NVIDIA-supported refresh commands.
 2. Clone this repository with submodules, which ODM itself uses:
 
    ```bash
@@ -93,7 +94,9 @@ the NVIDIA driver only needs to be new enough to run the container's CUDA
    ```
 
    The first ODM and Splatfacto builds download and compile large CUDA stacks
-   and can take a substantial amount of time. Later starts reuse the images.
+   and can take a substantial amount of time. Later starts reuse the pinned ODM
+   image even when application code changes. Use `make rebuild-odm` only after
+   intentionally changing ODM or `gpu.Dockerfile`.
 
 5. Verify local health and GPU visibility:
 
