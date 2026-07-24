@@ -243,7 +243,7 @@ def get_project(project_id: str) -> dict[str, Any]:
         "SELECT id,filename,size,offset,sha256,kind,state,error FROM uploads WHERE project_id=? ORDER BY created_at",
         (project_id,),
     )
-    project["artifacts"] = manifest(project_id)
+    project["artifacts"] = manifest(project_id, project["outputs"])
     return project
 
 
@@ -812,8 +812,8 @@ async def project_events(
 
 @app.get("/api/projects/{project_id}/artifacts")
 def artifact_manifest(project_id: str, _: dict = Depends(require_session)) -> dict[str, Any]:
-    get_project(project_id)
-    return {"artifacts": manifest(project_id)}
+    project = get_project(project_id)
+    return {"artifacts": manifest(project_id, project["outputs"])}
 
 
 @app.get("/api/projects/{project_id}/artifacts/{relative_path:path}")
@@ -823,8 +823,8 @@ def download_artifact(
     download: bool = Query(default=False),
     _: dict = Depends(require_session),
 ) -> FileResponse:
-    get_project(project_id)
-    if not artifact_path_allowed(project_id, relative_path):
+    project = get_project(project_id)
+    if not artifact_path_allowed(project_id, relative_path, project["outputs"]):
         raise HTTPException(status_code=404, detail="Artifact is not allowlisted")
     try:
         path = resolve_artifact_path(project_id, relative_path)
@@ -844,7 +844,9 @@ def raster_tile(
     y: int,
     _: dict = Depends(require_session),
 ) -> FileResponse:
-    get_project(project_id)
+    project = get_project(project_id)
+    if project["outputs"].get(layer, True) is False:
+        raise HTTPException(status_code=404, detail="Output is disabled for this project")
     if not 0 <= z <= 30 or x < 0 or y < 0:
         raise HTTPException(status_code=404, detail="Invalid tile coordinate")
     try:
@@ -860,7 +862,7 @@ def raster_metadata(
     layer: str,
     _: dict = Depends(require_session),
 ) -> dict[str, Any]:
-    get_project(project_id)
+    project = get_project(project_id)
     raster_paths = {
         "orthomosaic": project_root(project_id)
         / "artifacts"
@@ -871,6 +873,8 @@ def raster_metadata(
     }
     if layer not in raster_paths:
         raise HTTPException(status_code=422, detail="Unknown raster layer")
+    if project["outputs"].get(layer, True) is False:
+        raise HTTPException(status_code=404, detail="Output is disabled for this project")
     raster_path = raster_paths[layer]
     if not raster_path.is_file():
         raise HTTPException(status_code=404, detail="Raster is not available")
@@ -933,9 +937,11 @@ def elevation_sample(
     y: float,
     _: dict = Depends(require_session),
 ) -> dict[str, Any]:
-    get_project(project_id)
+    project = get_project(project_id)
     if layer not in {"dsm", "dtm"}:
         raise HTTPException(status_code=422, detail="Layer must be dsm or dtm")
+    if project["outputs"].get(layer, True) is False:
+        raise HTTPException(status_code=404, detail="Output is disabled for this project")
     path = project_root(project_id) / "artifacts" / "odm_dem" / f"{layer}.tif"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Elevation raster not found")

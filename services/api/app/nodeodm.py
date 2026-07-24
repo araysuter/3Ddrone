@@ -37,6 +37,48 @@ NODEODM_OUTPUTS = [
     "log.json",
 ]
 
+RAW_NODEODM_OUTPUTS = [
+    "images",
+    "odm_filterpoints",
+    "opensfm",
+    "images.json",
+    "cameras.json",
+    "benchmark.txt",
+    "img_list.txt",
+    "task_output.txt",
+    "log.json",
+]
+
+
+def nodeodm_output_paths(outputs: dict[str, bool]) -> list[str]:
+    """Return only the NodeODM archive paths needed by selected products."""
+    selected: list[str] = []
+    if outputs.get("orthomosaic"):
+        selected.extend(("odm_orthophoto", "orthophoto_tiles"))
+    if outputs.get("point_cloud"):
+        selected.extend(
+            (
+                "odm_georeferencing",
+                "entwine_pointcloud",
+                "potree_pointcloud",
+            )
+        )
+    if outputs.get("mesh"):
+        selected.extend(("odm_meshing", "odm_texturing", "odm_texturing_25d"))
+    if outputs.get("point_cloud") or outputs.get("mesh"):
+        selected.append("3d_tiles")
+    if outputs.get("dsm") or outputs.get("dtm"):
+        selected.append("odm_dem")
+    if outputs.get("dsm"):
+        selected.append("dsm_tiles")
+    if outputs.get("dtm"):
+        selected.append("dtm_tiles")
+    if outputs.get("report"):
+        selected.append("odm_report")
+    if outputs.get("raw"):
+        selected.extend(RAW_NODEODM_OUTPUTS)
+    return list(dict.fromkeys(selected))
+
 
 class NodeODMError(RuntimeError):
     pass
@@ -130,6 +172,7 @@ class NodeODMClient:
         files: list[Path],
         options: list[dict[str, Any]],
         task_uuid: str,
+        output_paths: list[str] | None = None,
     ) -> str:
         # NodeODM's /task/new/init endpoint is parsed by multer().none(), which
         # accepts multipart/form-data only. Sending these fields via httpx's
@@ -138,7 +181,15 @@ class NodeODMClient:
         form = {
             "name": (None, name),
             "options": (None, json.dumps(options)),
-            "outputs": (None, json.dumps(NODEODM_OUTPUTS)),
+            "outputs": (
+                None,
+                json.dumps(NODEODM_OUTPUTS if output_paths is None else output_paths),
+            ),
+            # NodeODM's legacy post-processing mode automatically adds
+            # pc-ept, cog and gltf regardless of the project's output
+            # selection. ODM 3.6 supports those options natively, so disable
+            # the legacy layer and pass only our explicit allowlisted options.
+            "skipPostProcessing": (None, "true"),
         }
         result = await self._json(
             "POST",

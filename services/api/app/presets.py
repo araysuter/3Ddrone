@@ -176,15 +176,16 @@ def resolve_odm_options(
     options = {
         **PRESETS[preset_name]["odm"],
         "feature-type": "sift",
-        "cog": True,
-        "tiles": True,
-        "build-overviews": True,
         "max-concurrency": calculate_concurrency(
             float(inspection.get("megapixels") or 9),
             float(inspection.get("host_ram_gb") or 48),
         ),
     }
     options.update(sanitize_advanced(advanced))
+    if outputs["orthomosaic"] or outputs["dsm"] or outputs["dtm"]:
+        options["cog"] = True
+        options["tiles"] = True
+        options["build-overviews"] = True
     if inspection.get("camera_model", "").upper() == "FC330":
         options["rolling-shutter"] = True
         options["rolling-shutter-readout"] = 33

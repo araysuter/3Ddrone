@@ -7,11 +7,15 @@ from rasterio.transform import from_origin
 from app.artifacts import artifacts_root
 
 
-def create_project(client, csrf):
+def create_project(client, csrf, outputs=None):
     response = client.post(
         "/api/projects",
         headers={"X-CSRF-Token": csrf},
-        json={"name": "Raster test", "preset": "standard", "outputs": {"splat": False}},
+        json={
+            "name": "Raster test",
+            "preset": "standard",
+            "outputs": outputs or {"splat": False},
+        },
     )
     assert response.status_code == 201
     return response.json()["id"]
@@ -68,3 +72,35 @@ def test_raster_metadata_and_elevation_sampling(authenticated):
         params={"layer": "dsm", "x": 0, "y": 0},
     )
     assert outside.status_code == 422
+
+
+def test_disabled_raster_cannot_be_read_from_stale_files(authenticated):
+    client, csrf = authenticated
+    project_id = create_project(
+        client,
+        csrf,
+        {"dsm": False, "dtm": False, "splat": False},
+    )
+    root = artifacts_root(project_id)
+    dem = root / "odm_dem" / "dsm.tif"
+    tile = root / "dsm_tiles" / "18" / "1" / "2.png"
+    dem.parent.mkdir(parents=True)
+    tile.parent.mkdir(parents=True)
+    dem.write_bytes(b"stale")
+    tile.write_bytes(b"stale")
+
+    metadata = client.get(
+        f"/api/projects/{project_id}/raster-metadata",
+        params={"layer": "dsm"},
+    )
+    sample = client.get(
+        f"/api/projects/{project_id}/elevation",
+        params={"layer": "dsm", "x": 0, "y": 0},
+    )
+    tiled = client.get(
+        f"/api/projects/{project_id}/tiles/dsm/18/1/2.png",
+    )
+
+    assert metadata.status_code == 404
+    assert sample.status_code == 404
+    assert tiled.status_code == 404

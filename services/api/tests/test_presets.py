@@ -50,6 +50,41 @@ def test_output_dependencies_are_resolved():
     assert outputs["raw"] is True
 
 
+def test_disabled_products_do_not_request_their_odm_exports():
+    outputs = resolve_outputs(
+        {
+            "orthomosaic": False,
+            "point_cloud": False,
+            "mesh": False,
+            "dsm": False,
+            "dtm": False,
+            "report": False,
+            "raw": True,
+            "splat": False,
+        }
+    )
+    options = as_dict(
+        resolve_odm_options(
+            "standard",
+            outputs,
+            {"camera_model": "FC330", "megapixels": 9, "host_ram_gb": 48},
+        )
+    )
+
+    assert options["skip-orthophoto"] is True
+    assert options["skip-3dmodel"] is True
+    assert options["skip-report"] is True
+    assert "pc-ept" not in options
+    assert "pc-copc" not in options
+    assert "3d-tiles" not in options
+    assert "gltf" not in options
+    assert "dsm" not in options
+    assert "dtm" not in options
+    assert "cog" not in options
+    assert "tiles" not in options
+    assert "build-overviews" not in options
+
+
 @pytest.mark.parametrize("name", ["project-path", "copy-to", "rerun-from", "ignore-gsd", "sm-cluster"])
 def test_dangerous_advanced_options_are_rejected(name):
     with pytest.raises(ValueError, match="Unsupported"):

@@ -11,7 +11,7 @@ import httpx
 from .artifacts import artifacts_root, install_nodeodm_archive, project_root
 from .config import settings
 from .db import all_rows, decode_project, emit_event, one, transaction, update_project
-from .nodeodm import NodeODMClient, NodeODMError
+from .nodeodm import NodeODMClient, NodeODMError, nodeodm_output_paths
 from .presets import PRESETS, resolve_odm_options
 
 _runner_task: asyncio.Task | None = None
@@ -198,7 +198,11 @@ async def process_project(project: dict[str, Any]) -> None:
         update_project(project_id, nodeodm_uuid=task_uuid, nodeodm_output_line=0)
         try:
             await client.create_task(
-                project["name"], _source_files(project_id), options, task_uuid
+                project["name"],
+                _source_files(project_id),
+                options,
+                task_uuid,
+                nodeodm_output_paths(project["outputs"]),
             )
         except Exception:
             # Keep the reserved UUID durable. If the commit response was lost,
@@ -216,7 +220,14 @@ async def process_project(project: dict[str, Any]) -> None:
                     f"feature-quality={accepted.get('feature-quality')}, "
                     f"pc-quality={accepted.get('pc-quality')}, "
                     f"rolling-shutter={accepted.get('rolling-shutter', False)}, "
-                    f"rolling-shutter-readout={accepted.get('rolling-shutter-readout', 0)}ms."
+                    f"rolling-shutter-readout={accepted.get('rolling-shutter-readout', 0)}ms, "
+                    "outputs="
+                    + ",".join(
+                        name
+                        for name, enabled in project["outputs"].items()
+                        if enabled
+                    )
+                    + "."
                 ]
             },
         )

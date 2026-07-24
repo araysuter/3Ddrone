@@ -118,7 +118,17 @@ def resolve_artifact_path(project_id: str, relative_path: str) -> Path:
     return target
 
 
-def artifact_path_allowed(project_id: str, relative_path: str) -> bool:
+def _output_enabled(
+    enabled_outputs: dict[str, bool] | None, category: str
+) -> bool:
+    return enabled_outputs is None or enabled_outputs.get(category, True)
+
+
+def artifact_path_allowed(
+    project_id: str,
+    relative_path: str,
+    enabled_outputs: dict[str, bool] | None = None,
+) -> bool:
     normalized = relative_path.strip("/")
     logical_path = PurePosixPath(normalized)
     if (
@@ -128,23 +138,37 @@ def artifact_path_allowed(project_id: str, relative_path: str) -> bool:
         or "\\" in normalized
     ):
         return False
-    exact = {item["path"] for item in manifest(project_id)}
+    exact = {item["path"] for item in manifest(project_id, enabled_outputs)}
     if normalized in exact:
         return True
-    viewer_prefixes = (
-        "artifacts/potree_pointcloud/",
-        "artifacts/entwine_pointcloud/",
-        "artifacts/3d_tiles/",
-        "artifacts/odm_texturing/",
-        "artifacts/odm_texturing_25d/",
-    )
-    return normalized.startswith(viewer_prefixes)
+    viewer_prefixes: list[str] = []
+    if _output_enabled(enabled_outputs, "point_cloud"):
+        viewer_prefixes.extend(
+            (
+                "artifacts/potree_pointcloud/",
+                "artifacts/entwine_pointcloud/",
+                "artifacts/3d_tiles/pointcloud/",
+            )
+        )
+    if _output_enabled(enabled_outputs, "mesh"):
+        viewer_prefixes.extend(
+            (
+                "artifacts/3d_tiles/model/",
+                "artifacts/odm_texturing/",
+                "artifacts/odm_texturing_25d/",
+            )
+        )
+    return normalized.startswith(tuple(viewer_prefixes))
 
 
-def manifest(project_id: str) -> list[dict[str, Any]]:
+def manifest(
+    project_id: str, enabled_outputs: dict[str, bool] | None = None
+) -> list[dict[str, Any]]:
     root = artifacts_root(project_id)
     results: list[dict[str, Any]] = []
     for category, label, relative, viewer in KNOWN_ARTIFACTS:
+        if not _output_enabled(enabled_outputs, category):
+            continue
         path = root / relative
         if not path.is_file() and relative.startswith("odm_texturing/"):
             terrain_relative = relative.replace("odm_texturing/", "odm_texturing_25d/", 1)
@@ -170,8 +194,8 @@ def manifest(project_id: str) -> list[dict[str, Any]]:
         results.append(
             {
                 "id": "all.zip",
-                "category": "raw",
-                "label": "All ODM outputs",
+                "category": "archive",
+                "label": "Selected ODM outputs",
                 "path": "all.zip",
                 "viewer": "download",
                 "size": all_zip.stat().st_size,

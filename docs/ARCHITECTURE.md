@@ -106,11 +106,16 @@ EXIF and DJI XMP are read with ExifTool in the container. FC330 is mapped to the
 
 ## Outputs and viewers
 
-NodeODM packages default useful products plus images and the full OpenSfM
-working output. The API downloads `all.zip` over NodeODM’s public API, fsyncs
-and validates the ZIP, limits entry count and expanded size, rejects traversal,
-symlinks, and duplicate paths, extracts atomically under the project artifact
-directory, and builds a canonical server-side allowlist.
+The API sends NodeODM an explicit archive path list derived from the project's
+output selections. NodeODM's legacy post-processing layer is disabled so it
+cannot silently re-enable COG, GLB, or EPT exports; ODM 3.6 receives the
+selected native options directly. The API downloads the resulting `all.zip`
+over NodeODM’s public API, fsyncs and validates the ZIP, limits entry count and
+expanded size, rejects traversal, symlinks, and duplicate paths, extracts
+atomically under the project artifact directory, and builds a canonical
+server-side allowlist. Artifact discovery and viewer routes apply the same
+selection again, so stale files from an earlier run cannot expose a disabled
+product.
 
 - Orthomosaic/DSM/DTM: OpenLayers and local static tiles.
 - Point cloud: generated Potree/EPT when present, with OGC 3D Tiles as the
@@ -119,6 +124,13 @@ directory, and builds a canonical server-side allowlist.
 - Gaussian splat: Spark 2.1 loads SPZ or PLY.
 - Report: same-origin embedded PDF.
 - Elevation: raster sample in the project CRS using Rasterio.
+
+Turning off a product removes its viewer, download entries, archive paths, and
+ODM export flags where ODM provides one. Some reconstruction stages are shared:
+feature matching and dense reconstruction are prerequisites for mapped
+products, and ODM creates an internal 2.5D terrain surface for raster products
+even when the exported 3D model is disabled. Gaussian splatting is independent
+and is never submitted when its output switch is off.
 
 Measurement tools display project-CRS distance and area. Consumer GPS is always labeled best effort. GCP-assisted projects still require report review; the app does not promote them to certified survey grade.
 

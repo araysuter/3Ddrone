@@ -100,6 +100,49 @@ def test_manifest_uses_terrain_mesh_when_full_3d_mesh_is_unavailable(tmp_path):
     assert artifact_path_allowed("terrain-mesh-test", items[0]["path"])
 
 
+def test_disabled_outputs_are_hidden_from_manifest_and_viewer_routes(tmp_path):
+    project_id = "filtered-manifest-test"
+    root = artifacts_root(project_id)
+    orthomosaic = root / "odm_orthophoto" / "odm_orthophoto.tif"
+    mesh_tiles = root / "3d_tiles" / "model" / "tileset.json"
+    raw_log = root / "log.json"
+    orthomosaic.parent.mkdir(parents=True)
+    mesh_tiles.parent.mkdir(parents=True)
+    orthomosaic.write_bytes(b"TIFF")
+    mesh_tiles.write_text("{}")
+    raw_log.write_text("{}")
+    (root.parent / "all.zip").write_bytes(b"ZIP")
+    outputs = {
+        "orthomosaic": True,
+        "point_cloud": False,
+        "mesh": False,
+        "dsm": False,
+        "dtm": False,
+        "report": False,
+        "raw": False,
+        "splat": False,
+    }
+
+    items = manifest(project_id, outputs)
+
+    assert [(item["category"], item["label"]) for item in items] == [
+        ("orthomosaic", "Orthomosaic COG"),
+        ("archive", "Selected ODM outputs"),
+    ]
+    assert artifact_path_allowed(
+        project_id,
+        "artifacts/odm_orthophoto/odm_orthophoto.tif",
+        outputs,
+    )
+    assert not artifact_path_allowed(
+        project_id,
+        "artifacts/3d_tiles/model/tileset.json",
+        outputs,
+    )
+    assert not artifact_path_allowed(project_id, "artifacts/log.json", outputs)
+    assert artifact_path_allowed(project_id, "all.zip", outputs)
+
+
 def test_sse_events_are_durable_and_ordered(authenticated):
     client, csrf = authenticated
     response = client.post(

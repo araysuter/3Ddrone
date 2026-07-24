@@ -13,18 +13,52 @@ import {
 import { useEffect, useRef } from "react";
 import type { Project, SystemMetrics } from "../types";
 
-const stages = [
-  ["Dataset validation", 12],
-  ["Feature extraction", 18],
-  ["Feature matching", 30],
-  ["Camera reconstruction", 40],
-  ["Dense point cloud", 50],
-  ["Meshing and texturing", 65],
-  ["Georeferencing", 76],
-  ["DSM, DTM and orthomosaic", 84],
-  ["Report and packaging", 92],
-  ["Gaussian splat", 96],
-] as const;
+type Stage = readonly [label: string, threshold: number];
+
+function outputEnabled(project: Project, output: string) {
+  return project.outputs[output] !== false;
+}
+
+function stagesFor(project: Project): Stage[] {
+  const stages: Stage[] = [
+    ["Dataset validation", 12],
+    ["Feature extraction", 18],
+    ["Feature matching", 30],
+    ["Camera reconstruction", 40],
+    ["Dense reconstruction", 50],
+  ];
+  const rasterOutputs = (["dsm", "dtm", "orthomosaic"] as const).filter((output) =>
+    outputEnabled(project, output),
+  );
+  if (outputEnabled(project, "mesh")) {
+    stages.push(["Meshing and texturing", 65]);
+  } else if (rasterOutputs.length) {
+    // ODM still needs a terrain surface internally to create map products,
+    // even when the user has disabled the exported 3D model.
+    stages.push(["Terrain surface reconstruction", 65]);
+  }
+  if (
+    ["orthomosaic", "point_cloud", "mesh", "dsm", "dtm"].some((output) =>
+      outputEnabled(project, output),
+    )
+  ) {
+    stages.push(["Georeferencing", 76]);
+  }
+  if (rasterOutputs.length) {
+    const rasterLabel = rasterOutputs
+      .map((output) => (output === "orthomosaic" ? "Orthomosaic" : output.toUpperCase()))
+      .join(", ");
+    stages.push([rasterLabel, 84]);
+  }
+  stages.push([
+    outputEnabled(project, "report") ? "Report and packaging" : "Output packaging",
+    92,
+  ]);
+  if (outputEnabled(project, "splat")) {
+    stages.push(["Gaussian splat", 96]);
+  }
+  return stages;
+}
 
 interface Props {
   project: Project;
@@ -35,19 +69,41 @@ interface Props {
 
 export function ProcessingView({ project, logLines, uploadProgress, metrics }: Props) {
   const logRef = useRef<HTMLDivElement>(null);
+  const stages = stagesFor(project);
   const shownProgress =
     project.status === "uploading" && uploadProgress !== undefined
       ? Math.round(uploadProgress * 100)
       : Math.round(project.progress);
-  const completedStages = stages.filter(([, threshold]) => project.progress >= threshold).length;
   const processingStage =
     project.status === "processing" || project.status === "splatting"
       ? stages.findIndex(([, threshold]) => project.progress < threshold)
       : -1;
-  const failedStage =
+  const failureContext = [project.stage, project.error, ...logLines.slice(-100)]
+    .join("\n")
+    .toLowerCase();
+  let failedStage =
     project.status === "failed"
       ? stages.findIndex(([label]) => project.stage.toLowerCase().includes(label.toLowerCase()))
       : -1;
+  if (
+    failedStage < 0 &&
+    project.status === "failed" &&
+    ["mesh", "reconstructmesh", "screened_poisson"].some((marker) =>
+      failureContext.includes(marker),
+    )
+  ) {
+    failedStage = stages.findIndex(
+      ([label]) => label.includes("Meshing") || label.includes("Terrain surface"),
+    );
+  }
+  if (failedStage < 0 && project.status === "failed") {
+    failedStage = stages.findIndex(([, threshold]) => project.progress < threshold);
+    if (failedStage < 0) failedStage = stages.length - 1;
+  }
+  const completedStages = stages.filter(
+    ([, threshold], index) =>
+      project.progress >= threshold && (failedStage < 0 || index < failedStage),
+  ).length;
   const activeStage = failedStage >= 0 ? failedStage : processingStage;
   const elapsed = (() => {
     const seconds = Math.max(0, (Date.now() - new Date(project.created_at).getTime()) / 1000);
@@ -77,7 +133,11 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
           <span>
             <Timer size={13} /> Elapsed {elapsed}
           </span>
-          <span>Single GPU pipeline · ODM → Splatfacto</span>
+          <span>
+            {outputEnabled(project, "splat")
+              ? "Single GPU pipeline · ODM → Splatfacto"
+              : "Single GPU pipeline · ODM only"}
+          </span>
         </div>
       </section>
       <div className="processing-grid">
@@ -88,7 +148,8 @@ export function ProcessingView({ project, logLines, uploadProgress, metrics }: P
           </header>
           <div className="stage-list">
             {stages.map(([label, threshold], index) => {
-              const done = project.progress >= threshold;
+              const done =
+                project.progress >= threshold && (failedStage < 0 || index < failedStage);
               const active = index === activeStage;
               const failed = index === failedStage;
               return (

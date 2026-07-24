@@ -87,6 +87,11 @@ At 1440×900 and 1280×720:
     must be absent.
 11. Check the browser console for errors and verify the two-column Outputs grid
     has complete borders at the narrower viewport.
+12. Create a second Standard project with Gaussian splat, mesh, DTM, and report
+    disabled. Confirm those stages/tabs never appear, the processing footer
+    reads `ODM only`, NodeODM effective options contain `skip-3dmodel`,
+    `skip-report`, and no `dtm`, and the selected-output archive contains none
+    of those product families.
 
 ## Stop conditions
 

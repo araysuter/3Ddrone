@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Box,
   CheckCircle2,
@@ -48,8 +48,26 @@ function find(project: Project, category: string, labelPart?: string) {
 }
 
 export function ResultsView({ project }: { project: Project }) {
-  const [tab, setTab] = useState("orthomosaic");
-  const [elevation, setElevation] = useState<"dsm" | "dtm">("dsm");
+  const availableTabs = useMemo(
+    () =>
+      tabs.filter(([id]) => {
+        if (id === "files") return true;
+        if (id === "elevation") {
+          return project.outputs.dsm !== false || project.outputs.dtm !== false;
+        }
+        return project.outputs[id] !== false;
+      }),
+    [project.outputs],
+  );
+  const [tab, setTab] = useState<string>(() => availableTabs[0]?.[0] ?? "files");
+  const enabledElevationLayers = useMemo(
+    () =>
+      (["dsm", "dtm"] as const).filter((layer) => project.outputs[layer] !== false),
+    [project.outputs],
+  );
+  const [elevation, setElevation] = useState<"dsm" | "dtm">(
+    () => enabledElevationLayers[0] ?? "dsm",
+  );
   const stats = useMemo(
     () => [
       ["IMAGES", `${project.inspection.images ?? "—"}`],
@@ -64,6 +82,18 @@ export function ResultsView({ project }: { project: Project }) {
     ],
     [project],
   );
+
+  useEffect(() => {
+    if (!availableTabs.some(([id]) => id === tab)) {
+      setTab(availableTabs[0]?.[0] ?? "files");
+    }
+  }, [availableTabs, tab]);
+
+  useEffect(() => {
+    if (!enabledElevationLayers.includes(elevation)) {
+      setElevation(enabledElevationLayers[0] ?? "dsm");
+    }
+  }, [elevation, enabledElevationLayers]);
 
   return (
     <div className="results-view">
@@ -83,7 +113,7 @@ export function ResultsView({ project }: { project: Project }) {
         </div>
       </section>
       <nav className="result-tabs" aria-label="Project outputs">
-        {tabs.map(([id, label, Icon]) => (
+        {availableTabs.map(([id, label, Icon]) => (
           <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>
             <Icon size={14} />
             {label}
@@ -140,12 +170,16 @@ export function ResultsView({ project }: { project: Project }) {
           {tab === "elevation" && (
             <div className="elevation-view">
               <div className="viewer-subtabs">
-                <button className={elevation === "dsm" ? "active" : ""} onClick={() => setElevation("dsm")}>
-                  DSM · SURFACE
-                </button>
-                <button className={elevation === "dtm" ? "active" : ""} onClick={() => setElevation("dtm")}>
-                  DTM · TERRAIN
-                </button>
+                {project.outputs.dsm !== false && (
+                  <button className={elevation === "dsm" ? "active" : ""} onClick={() => setElevation("dsm")}>
+                    DSM · SURFACE
+                  </button>
+                )}
+                {project.outputs.dtm !== false && (
+                  <button className={elevation === "dtm" ? "active" : ""} onClick={() => setElevation("dtm")}>
+                    DTM · TERRAIN
+                  </button>
+                )}
               </div>
               <MapViewer projectId={project.id} layer={elevation} />
             </div>

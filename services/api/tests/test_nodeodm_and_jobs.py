@@ -13,7 +13,12 @@ import pytest
 
 from app import jobs, main
 from app.db import one, transaction, update_project, utcnow
-from app.nodeodm import NodeODMClient, NodeODMError, option_mismatches
+from app.nodeodm import (
+    NodeODMClient,
+    NodeODMError,
+    nodeodm_output_paths,
+    option_mismatches,
+)
 
 
 def test_nodeodm_image_reuses_an_existing_numeric_runtime_identity():
@@ -147,11 +152,44 @@ async def test_nodeodm_init_sends_multipart_fields_and_verifies_effective_option
 
     monkeypatch.setattr(client, "_json", fake_json)
 
-    assert await client.create_task("High FC330", [], options, task_uuid) == task_uuid
+    output_paths = ["odm_orthophoto", "orthophoto_tiles"]
+    assert (
+        await client.create_task(
+            "High FC330", [], options, task_uuid, output_paths
+        )
+        == task_uuid
+    )
     assert "data" not in init_kwargs
     assert init_kwargs["files"]["name"] == (None, "High FC330")
     assert json.loads(init_kwargs["files"]["options"][1]) == options
+    assert json.loads(init_kwargs["files"]["outputs"][1]) == output_paths
+    assert init_kwargs["files"]["skipPostProcessing"] == (None, "true")
     assert init_kwargs["headers"] == {"Set-UUID": task_uuid}
+
+
+def test_nodeodm_archive_paths_include_only_selected_product_families():
+    selected = nodeodm_output_paths(
+        {
+            "orthomosaic": True,
+            "point_cloud": False,
+            "mesh": False,
+            "dsm": True,
+            "dtm": False,
+            "report": False,
+            "raw": False,
+            "splat": False,
+        }
+    )
+
+    assert selected == [
+        "odm_orthophoto",
+        "orthophoto_tiles",
+        "odm_dem",
+        "dsm_tiles",
+    ]
+    assert "opensfm" not in selected
+    assert "odm_texturing" not in selected
+    assert "dtm_tiles" not in selected
 
 
 @pytest.mark.asyncio
@@ -319,6 +357,10 @@ async def test_failed_full_mesh_restarts_same_task_once_with_terrain_fallback(
     monkeypatch.setattr(jobs, "settings", replace(jobs.settings, demo_mode=False))
     monkeypatch.setattr(jobs, "NodeODMClient", lambda: fake)
     monkeypatch.setattr(jobs, "install_nodeodm_archive", lambda *_args: None)
+    async def unexpected_splat(_project):
+        raise AssertionError("Disabled splat stage must not be invoked")
+
+    monkeypatch.setattr(jobs, "run_splat", unexpected_splat)
 
     await jobs.process_project(jobs.decode_project(one("SELECT * FROM projects WHERE id=?", (project_id,))))
 

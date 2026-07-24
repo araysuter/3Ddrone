@@ -129,9 +129,17 @@ Restore the entire configured data directory, not just `mapper.sqlite3`; databas
 - Full 3D mesh cleanup failure: the API retries the same NodeODM task once with ODM's 2.5D terrain mesh and reuses completed reconstruction work.
 - Other ODM failure, or a failed terrain-mesh recovery: inspect NodeODM console lines in the project log before changing any parameters.
 
+The processing stage list and completed-results tabs contain only the products
+selected for that project. With Gaussian splat disabled, the footer reads
+`ODM only`, no splat stage is submitted, and no splat viewer or stale splat
+artifact is served. Disabling an output also removes its NodeODM archive paths
+and native ODM export flags where supported. Shared prerequisites can still
+run—for example, ODM needs dense reconstruction and a terrain surface to
+produce an orthomosaic.
+
 Each new run writes a mapper log line confirming the effective preset,
 feature/point-cloud quality, rolling-shutter flag, and readout accepted by
-NodeODM. For an FC330 High run it must report `preset=high`,
+NodeODM, followed by the enabled output names. For an FC330 High run it must report `preset=high`,
 `feature-quality=ultra`, `pc-quality=high`, `rolling-shutter=True`, and
 `rolling-shutter-readout=33ms`. The API fails closed if NodeODM does not retain
 the requested options.
