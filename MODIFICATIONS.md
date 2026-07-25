@@ -17,7 +17,15 @@ This repository combines OpenDroneMap with a local application layer. The follow
   for ODM GLB fallback. Spark initialization is observed explicitly so splat
   load progress, failures, and camera fitting are visible instead of producing
   an unexplained blank canvas.
+  A separate public-only build and Nginx gateway render revocable anonymous
+  map links without shipping operator screens or proxying private API routes.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
+  The application adds one-level map folders, nullable map assignment, and
+  metadata-only organization APIs; deleting a folder unassigns its maps without
+  deleting any processing data.
+  Optional public shares use HMAC fragment secrets, scoped HttpOnly cookies,
+  sanitized metadata, aggregate access statistics, and versioned hard-link
+  snapshots that preserve the last completed publication during reprocessing.
   Mapper presets disable ODM edge cropping by default (`crop=0`). A project can
   be reprocessed with new preset, output, and allowlisted Advanced settings
   while retaining its validated source uploads and keeping the prior local
@@ -34,7 +42,12 @@ This repository combines OpenDroneMap with a local application layer. The follow
   release tag. Splatfacto's LPIPS/AlexNet weights are preloaded into the image
   so the intentionally isolated runtime does not make an external request.
 - `docker/nodeodm.Dockerfile` and `docker/nodeodm-config.json`: reproducible production dependencies, unprivileged numeric runtime ownership that reuses a matching base-image UID/GID when present, token-aware health checking, read-only application code, and retained rotating NodeODM logs.
-- `compose.yaml`: four long-running services, an initialization helper, local-only host binding, isolated edge/internal networks, GPU device 0 reservations, dropped capabilities, log rotation, and durable bind mounts.
+- `compose.yaml`: four core long-running services, an initialization helper,
+  local-only host binding, isolated edge/internal networks, GPU device 0
+  reservations, dropped capabilities, log rotation, and durable bind mounts.
+  The opt-in `sharing` profile adds a read-only public gateway and pinned
+  cloudflared connector on a separate network; cloudflared cannot reach any
+  processing service directly.
 - `docs/`, `scripts/`, tests, build helpers, and operator configuration.
 
 The only upstream-root adjustment outside these additions is `.gitignore`, which retains the local sample dataset and application runtime products outside Git.

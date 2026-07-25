@@ -12,19 +12,22 @@ import {
   X,
 } from "lucide-react";
 import { api } from "../lib/api";
-import type { AdvancedOption, Project } from "../types";
+import type { AdvancedOption, MapFolder, Project } from "../types";
 
 interface Props {
   open: boolean;
   busy: boolean;
   mode?: "create" | "reprocess";
   initialProject?: Project;
+  folders?: MapFolder[];
+  defaultFolderId?: string | null;
   onClose: () => void;
   onSubmit: (payload: {
     name: string;
     preset: string;
     outputs: Record<string, boolean>;
     advanced: Record<string, unknown>;
+    folder_id: string | null;
     files: File[];
   }) => Promise<void>;
 }
@@ -69,6 +72,8 @@ export function NewProjectDialog({
   busy,
   mode = "create",
   initialProject,
+  folders = [],
+  defaultFolderId = null,
   onClose,
   onSubmit,
 }: Props) {
@@ -76,6 +81,9 @@ export function NewProjectDialog({
   const [name, setName] = useState(initialProject?.name ?? "");
   const [files, setFiles] = useState<File[]>([]);
   const [preset, setPreset] = useState(initialProject?.preset ?? "high");
+  const [folderId, setFolderId] = useState(
+    initialProject?.folder_id ?? defaultFolderId ?? "",
+  );
   const [outputs, setOutputs] = useState<Record<string, boolean>>(
     () => ({ ...defaultOutputs, ...(initialProject?.outputs ?? {}) }),
   );
@@ -178,7 +186,14 @@ export function NewProjectDialog({
     }
     setError("");
     try {
-      await onSubmit({ name: name.trim(), preset, outputs, advanced: advancedValues, files });
+      await onSubmit({
+        name: name.trim(),
+        preset,
+        outputs,
+        advanced: advancedValues,
+        folder_id: folderId || null,
+        files,
+      });
       if (!reprocessing) {
         setName("");
         setFiles([]);
@@ -192,8 +207,8 @@ export function NewProjectDialog({
         reason instanceof Error
           ? reason.message
           : reprocessing
-            ? "Project could not be reprocessed"
-            : "Project could not be created",
+            ? "Map could not be reprocessed"
+            : "Map could not be created",
       );
     }
   }
@@ -209,9 +224,9 @@ export function NewProjectDialog({
       >
         <header className="modal-header">
           <div>
-            <p className="eyebrow">{reprocessing ? "REPROCESS DATASET" : "NEW DATASET"}</p>
+            <p className="eyebrow">{reprocessing ? "REPROCESS MAP" : "NEW MAP"}</p>
             <h2 id="new-project-title">
-              {reprocessing ? "Reprocess with different settings" : "Create mapping project"}
+              {reprocessing ? "Reprocess with different settings" : "Create aerial map"}
             </h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Close">
@@ -220,7 +235,7 @@ export function NewProjectDialog({
         </header>
         <div className="modal-body">
           <label className="field-label">
-            Project name
+            Map name
             <input
               autoFocus
               placeholder="e.g. Pioneer High School — July 23"
@@ -228,6 +243,19 @@ export function NewProjectDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </label>
+          {!reprocessing && (
+            <label className="field-label map-project-field">
+              Project
+              <select value={folderId} onChange={(event) => setFolderId(event.target.value)}>
+                <option value="">No Project</option>
+                {folders.map((folder) => (
+                  <option value={folder.id} key={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {reprocessing ? (
             <div className="reprocess-source-note">
               <RotateCcw size={18} />
@@ -387,7 +415,7 @@ export function NewProjectDialog({
           <span>
             {reprocessing
               ? "Original uploads remain retained throughout reprocessing."
-              : "Files are retained locally until you confirm project deletion."}
+              : "Files are retained locally until you confirm map deletion."}
           </span>
           <div>
             <button className="button secondary" onClick={onClose}>
@@ -409,8 +437,8 @@ export function NewProjectDialog({
                   ? "Queuing reprocess…"
                   : "Starting upload…"
                 : reprocessing
-                  ? "Reprocess project"
-                  : "Create & upload"}
+                  ? "Reprocess map"
+                  : "Create map & upload"}
             </button>
           </div>
         </footer>

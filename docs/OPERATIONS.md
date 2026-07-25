@@ -107,6 +107,79 @@ tailscale serve status
 
 Tailscale terminates HTTPS and proxies to the local HTTP listener. Keep `MAPPER_COOKIE_SECURE=true` for this deployment. Direct `http://127.0.0.1:8080` setup requires temporarily setting it to `false`, and should not be used for remote access.
 
+## Public read-only sharing
+
+Do this only after the exact source revision being deployed has been pushed to
+the public AGPL repository. The sharing profile does not expose the private
+frontend: Cloudflare can reach only a dedicated public Nginx gateway, and that
+gateway proxies only the anonymous share API.
+
+1. Generate a third independent signing key:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   Put it in `.env` as `MAPPER_SHARE_SIGNING_KEY`. Set:
+
+   ```dotenv
+   MAPPER_SHARING_ENABLED=true
+   MAPPER_PUBLIC_BASE_URL=https://dronemaps.ashersuter.com
+   COMPOSE_PROFILES=sharing
+   ```
+
+2. In Cloudflare Zero Trust, create a new remotely managed tunnel dedicated to
+   this application. Add the public hostname `dronemaps.ashersuter.com` and set
+   its service URL to:
+
+   ```text
+   http://public-gateway:8080
+   ```
+
+   Do not point the hostname at `frontend`, `api`, port 8000, or the host's
+   Tailscale address.
+
+3. Copy only the tunnel connector token into `.env`:
+
+   ```dotenv
+   CLOUDFLARE_TUNNEL_TOKEN=paste-the-connector-token-here
+   ```
+
+   Do not commit `.env`, the share signing key, generated map links, or the
+   tunnel token. The pinned cloudflared container reads the token from
+   `TUNNEL_TOKEN`; no Cloudflare credentials file is mounted.
+
+4. Validate and start:
+
+   ```bash
+   MAPPER_ENV_FILE=.env ./scripts/check-config.sh
+   docker compose --profile sharing config --quiet
+   make up
+   docker compose ps
+   docker compose logs --tail=100 public-gateway cloudflared
+   ```
+
+5. Verify the boundary before creating a link:
+
+   ```bash
+   curl --fail https://dronemaps.ashersuter.com/healthz
+   curl -i https://dronemaps.ashersuter.com/api/projects
+   curl -i https://dronemaps.ashersuter.com/api/setup
+   curl -i https://dronemaps.ashersuter.com/api/system
+   ```
+
+   Health must return 200 and every private API probe must return 404. The bare
+   hostname must show “A valid share link is required.” Confirm separately that
+   the Tailscale operator URL still supports login and processing.
+
+The Share dialog warns that the link grants anonymous viewing and downloads,
+reports aggregate page views and the last view time, and can disable or replace
+the secret. Links do not expire automatically. During reprocessing, the
+previous published output remains public; a new snapshot replaces it only
+after the map reaches `completed`. Stop the profile with `make down`, or remove
+`sharing` from `COMPOSE_PROFILES` and run `make up`; disabling an individual
+map link is immediate and does not require a container restart.
+
 ## Backups
 
 Stop the application before a consistent cold backup:
@@ -162,7 +235,9 @@ docker compose logs --tail=300 api nodeodm splat-worker
 du -sh /srv/local-aerial-mapper/*
 ```
 
-Projects are never automatically deleted. Use the confirmed UI deletion only after downloading or backing up anything that must be retained.
+Maps are never automatically deleted. Use the confirmed map deletion only
+after downloading or backing up anything that must be retained. Deleting an
+organizational project is nondestructive: its maps return to No Project.
 
 Before diagnosing a container failure, validate the exact deployed
 configuration:
@@ -177,6 +252,9 @@ docker compose logs --tail=300 api nodeodm splat-worker frontend
 The configuration checker rejects relative or root data paths, placeholder,
 short, or duplicate service tokens, root/out-of-range container IDs, and
 invalid cookie/session/disk-reserve values before Docker mutates runtime state.
+When sharing is selected, it also requires the exact HTTPS public origin, a
+third distinct signing key, a non-placeholder Cloudflare connector token, and
+the `sharing` Compose profile.
 The default upload/extraction reserve is 5 GiB. Lower
 `MAPPER_DISK_RESERVE_BYTES` only when the operator has deliberately accepted a
 smaller safety margin; the API refuses values below 1 GiB.

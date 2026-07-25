@@ -5,9 +5,11 @@ import {
   Download,
   FileArchive,
   FileText,
+  Info,
   Layers3,
   Map,
   Mountain,
+  Share2,
   Sparkles,
 } from "lucide-react";
 import {
@@ -16,7 +18,7 @@ import {
   selectPointCloudArtifact,
   selectSplatArtifacts,
 } from "../lib/artifacts";
-import type { Artifact, Project } from "../types";
+import type { Artifact, ResultsProject } from "../types";
 
 const MapViewer = lazy(() =>
   import("../viewers/MapViewer").then((module) => ({ default: module.MapViewer })),
@@ -46,15 +48,28 @@ const tabs = [
   ["files", "FILES", FileArchive],
 ] as const;
 
-function downloadUrl(project: Project, artifact: Artifact) {
-  return `/api/projects/${project.id}/artifacts/${artifact.path}`;
+function downloadUrl(project: ResultsProject, artifact: Artifact, shared: boolean) {
+  const base = shared
+    ? `/api/public/shares/${project.id}`
+    : `/api/projects/${project.id}`;
+  return `${base}/artifacts/${artifact.path}`;
 }
 
-function find(project: Project, category: string, labelPart?: string) {
+function find(project: ResultsProject, category: string, labelPart?: string) {
   return findArtifact(project.artifacts, category, labelPart);
 }
 
-export function ResultsView({ project }: { project: Project }) {
+export function ResultsView({
+  project,
+  shared = false,
+  onShare,
+  onAbout,
+}: {
+  project: ResultsProject;
+  shared?: boolean;
+  onShare?: () => void;
+  onAbout?: () => void;
+}) {
   const availableTabs = useMemo(
     () =>
       tabs.filter(([id]) => {
@@ -106,12 +121,12 @@ export function ResultsView({ project }: { project: Project }) {
 
   return (
     <div className="results-view">
-      <section className="result-summary">
-        <div className="completion-badge">
+      <section className={`result-summary${shared ? " shared-summary" : ""}`}>
+        {!shared && <div className="completion-badge">
           <CheckCircle2 size={17} />
           <strong>{project.status === "partial" ? "ODM COMPLETE" : "PROCESSING COMPLETE"}</strong>
           <span>{project.status === "partial" ? "Gaussian splat needs attention" : "All requested products are ready"}</span>
-        </div>
+        </div>}
         <div className="result-stats">
           {stats.map(([label, value]) => (
             <div key={label}>
@@ -128,31 +143,40 @@ export function ResultsView({ project }: { project: Project }) {
             {label}
           </button>
         ))}
+        {!shared && onShare && (
+          <button className="share-tab-button" onClick={onShare}>
+            <Share2 size={14} />
+            SHARE
+          </button>
+        )}
       </nav>
       <section className="viewer-frame">
         <Suspense fallback={<div className="viewer-loading">LOADING VIEWER…</div>}>
-          {tab === "orthomosaic" && <MapViewer projectId={project.id} layer="orthomosaic" />}
+          {tab === "orthomosaic" && (
+            <MapViewer projectId={project.id} layer="orthomosaic" publicShare={shared} />
+          )}
           {tab === "point_cloud" && (
             <ArtifactState
               project={project}
               artifact={selectPointCloudArtifact(project.artifacts)}
+              shared={shared}
             >
               {(artifact) => {
                 if (artifact.viewer === "tiles3d") {
                   return (
-                    <TilesViewer url={downloadUrl(project, artifact)} />
+                    <TilesViewer url={downloadUrl(project, artifact, shared)} />
                   );
                 }
                 if (artifact.label.toLowerCase().includes("laz")) {
                   return (
-                    <PointCloudViewer url={downloadUrl(project, artifact)} />
+                    <PointCloudViewer url={downloadUrl(project, artifact, shared)} />
                   );
                 }
                 return (
                   <iframe
                     className="artifact-iframe"
                     title="Potree point cloud"
-                    src={downloadUrl(project, artifact)}
+                    src={downloadUrl(project, artifact, shared)}
                   />
                 );
               }}
@@ -162,16 +186,17 @@ export function ResultsView({ project }: { project: Project }) {
             <ArtifactState
               project={project}
               artifact={meshArtifacts.primary}
+              shared={shared}
             >
               {(artifact) =>
                 artifact.viewer === "tiles3d" ? (
-                  <TilesViewer url={downloadUrl(project, artifact)} />
+                  <TilesViewer url={downloadUrl(project, artifact, shared)} />
                 ) : (
                   <ModelViewer
-                    url={downloadUrl(project, artifact)}
+                    url={downloadUrl(project, artifact, shared)}
                     fallbackUrl={
                       meshArtifacts.fallback
-                        ? downloadUrl(project, meshArtifacts.fallback)
+                        ? downloadUrl(project, meshArtifacts.fallback, shared)
                         : undefined
                     }
                   />
@@ -184,13 +209,14 @@ export function ResultsView({ project }: { project: Project }) {
               project={project}
               artifact={splatArtifacts.primary}
               partialText="ODM products are safe. Retry only the Gaussian splat stage."
+              shared={shared}
             >
               {(artifact) => (
                 <SplatViewer
-                  url={downloadUrl(project, artifact)}
+                  url={downloadUrl(project, artifact, shared)}
                   fallbackUrl={
                     splatArtifacts.fallback
-                      ? downloadUrl(project, splatArtifacts.fallback)
+                      ? downloadUrl(project, splatArtifacts.fallback, shared)
                       : undefined
                   }
                 />
@@ -211,21 +237,21 @@ export function ResultsView({ project }: { project: Project }) {
                   </button>
                 )}
               </div>
-              <MapViewer projectId={project.id} layer={elevation} />
+              <MapViewer projectId={project.id} layer={elevation} publicShare={shared} />
             </div>
           )}
           {tab === "report" && (
-            <ArtifactState project={project} artifact={find(project, "report")}>
+            <ArtifactState project={project} artifact={find(project, "report")} shared={shared}>
               {(artifact) => (
                 <iframe
                   className="artifact-iframe report"
                   title="ODM quality report"
-                  src={downloadUrl(project, artifact)}
+                  src={downloadUrl(project, artifact, shared)}
                 />
               )}
             </ArtifactState>
           )}
-          {tab === "files" && <FileBrowser project={project} />}
+          {tab === "files" && <FileBrowser project={project} shared={shared} />}
         </Suspense>
       </section>
       <footer className="accuracy-footer">
@@ -235,6 +261,11 @@ export function ResultsView({ project }: { project: Project }) {
           {project.inspection.accuracy?.detail ??
             "Inspect the quality report before relying on measurements."}
         </span>
+        {shared && onAbout && (
+          <button className="public-about-button" onClick={onAbout}>
+            <Info size={13} /> About &amp; source
+          </button>
+        )}
       </footer>
     </div>
   );
@@ -244,11 +275,13 @@ function ArtifactState({
   project,
   artifact,
   partialText,
+  shared,
   children,
 }: {
-  project: Project;
+  project: ResultsProject;
   artifact?: Artifact;
   partialText?: string;
+  shared?: boolean;
   children: (artifact: Artifact) => React.ReactNode;
 }) {
   if (artifact) return children(artifact);
@@ -256,12 +289,18 @@ function ArtifactState({
     <div className="artifact-empty">
       <FileArchive size={34} strokeWidth={1.25} />
       <strong>This output is not available</strong>
-      <span>{project.status === "partial" ? partialText : "It may have been disabled for this project."}</span>
+      <span>
+        {shared
+          ? "This published view does not include that output."
+          : project.status === "partial"
+            ? partialText
+            : "It may have been disabled for this project."}
+      </span>
     </div>
   );
 }
 
-function FileBrowser({ project }: { project: Project }) {
+function FileBrowser({ project, shared }: { project: ResultsProject; shared: boolean }) {
   const artifacts = project.artifacts ?? [];
   return (
     <div className="file-browser">
@@ -274,7 +313,7 @@ function FileBrowser({ project }: { project: Project }) {
       </header>
       <div className="file-list">
         {artifacts.map((artifact) => (
-          <a href={downloadUrl(project, artifact)} key={artifact.id} download>
+          <a href={downloadUrl(project, artifact, shared)} key={artifact.id} download>
             <FileArchive size={15} />
             <span>
               <strong>{artifact.label}</strong>

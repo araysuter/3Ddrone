@@ -109,7 +109,11 @@ def install_nodeodm_archive(project_id: str, archive: Path) -> None:
 
 
 def resolve_artifact_path(project_id: str, relative_path: str) -> Path:
-    root = project_root(project_id).resolve()
+    return resolve_artifact_path_for_root(project_root(project_id), relative_path)
+
+
+def resolve_artifact_path_for_root(root: Path, relative_path: str) -> Path:
+    root = root.resolve()
     target = (root / relative_path).resolve()
     if root != target and root not in target.parents:
         raise ValueError("Artifact path escapes project directory")
@@ -129,6 +133,16 @@ def artifact_path_allowed(
     relative_path: str,
     enabled_outputs: dict[str, bool] | None = None,
 ) -> bool:
+    return artifact_path_allowed_for_root(
+        project_root(project_id), relative_path, enabled_outputs
+    )
+
+
+def artifact_path_allowed_for_root(
+    root: Path,
+    relative_path: str,
+    enabled_outputs: dict[str, bool] | None = None,
+) -> bool:
     normalized = relative_path.strip("/")
     logical_path = PurePosixPath(normalized)
     if (
@@ -138,7 +152,7 @@ def artifact_path_allowed(
         or "\\" in normalized
     ):
         return False
-    exact = {item["path"] for item in manifest(project_id, enabled_outputs)}
+    exact = {item["path"] for item in manifest_for_root(root, enabled_outputs)}
     if normalized in exact:
         return True
     viewer_prefixes: list[str] = []
@@ -164,7 +178,13 @@ def artifact_path_allowed(
 def manifest(
     project_id: str, enabled_outputs: dict[str, bool] | None = None
 ) -> list[dict[str, Any]]:
-    root = artifacts_root(project_id)
+    return manifest_for_root(project_root(project_id), enabled_outputs)
+
+
+def manifest_for_root(
+    project: Path, enabled_outputs: dict[str, bool] | None = None
+) -> list[dict[str, Any]]:
+    root = project / "artifacts"
     results: list[dict[str, Any]] = []
     for category, label, relative, viewer in KNOWN_ARTIFACTS:
         if not _output_enabled(enabled_outputs, category):
@@ -189,7 +209,7 @@ def manifest(
                     "content_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
                 }
             )
-    all_zip = project_root(project_id) / "all.zip"
+    all_zip = project / "all.zip"
     if all_zip.is_file():
         results.append(
             {
@@ -206,6 +226,12 @@ def manifest(
 
 
 def tile_path(project_id: str, layer: str, z: int, x: int, y: int) -> Path:
+    return tile_path_for_root(project_root(project_id), layer, z, x, y)
+
+
+def tile_path_for_root(
+    project: Path, layer: str, z: int, x: int, y: int
+) -> Path:
     candidates = {
         "orthomosaic": [f"orthophoto_tiles/{z}/{x}/{y}.png", f"odm_orthophoto/tiles/{z}/{x}/{y}.png"],
         "dsm": [f"dsm_tiles/{z}/{x}/{y}.png"],
@@ -214,7 +240,7 @@ def tile_path(project_id: str, layer: str, z: int, x: int, y: int) -> Path:
     if layer not in candidates:
         raise ValueError("Unknown raster layer")
     for relative in candidates[layer]:
-        candidate = artifacts_root(project_id) / relative
+        candidate = project / "artifacts" / relative
         if candidate.is_file():
             return candidate
     raise FileNotFoundError("Tile is not available")

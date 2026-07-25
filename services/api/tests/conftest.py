@@ -12,6 +12,9 @@ os.environ["MAPPER_COOKIE_SECURE"] = "false"
 os.environ["MAPPER_DEMO_MODE"] = "true"
 os.environ["MAPPER_INTERNAL_TOKEN"] = "test-internal-token"
 os.environ["MAPPER_DISK_RESERVE_BYTES"] = str(1024**3)
+os.environ["MAPPER_SHARING_ENABLED"] = "true"
+os.environ["MAPPER_PUBLIC_BASE_URL"] = "https://dronemaps.ashersuter.com"
+os.environ["MAPPER_SHARE_SIGNING_KEY"] = "test-share-signing-key-that-is-long-enough"
 
 from app.config import settings
 from app.db import init_db, transaction
@@ -21,9 +24,18 @@ from app.db import init_db, transaction
 def clean_database():
     init_db()
     with transaction() as db:
-        for table in ("project_events", "uploads", "projects", "sessions", "login_attempts", "admins"):
+        for table in (
+            "project_events",
+            "uploads",
+            "project_shares",
+            "projects",
+            "map_folders",
+            "sessions",
+            "login_attempts",
+            "admins",
+        ):
             db.execute(f"DELETE FROM {table}")
-    for folder in ("source", "uploads", "metadata/projects"):
+    for folder in ("source", "uploads", "metadata/projects", "metadata/shares"):
         path = settings.data_root / folder
         if path.exists():
             for child in path.iterdir():

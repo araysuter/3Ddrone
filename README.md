@@ -2,7 +2,7 @@
 
 A private, single-user aerial mapping workstation for Ubuntu, OpenDroneMap, and one NVIDIA GPU. It keeps the stable ODM 3.6.0 processing engine intact, drives it through pinned NodeODM 2.2.3, and runs a separate Nerfstudio Splatfacto/gsplat stage after ODM releases the GPU.
 
-The web app accepts drone imagery and supporting control files, retains every project until confirmed deletion, and presents orthomosaics, point clouds, textured models, DSM/DTM products, reports, raw artifacts, and Gaussian splats in one local interface.
+The web app accepts drone imagery and supporting control files, retains every map until confirmed deletion, and presents orthomosaics, point clouds, textured models, DSM/DTM products, reports, raw artifacts, and Gaussian splats in one local interface. Recurring maps can be organized into one-level projects without moving or duplicating their retained data.
 
 ## What is included
 
@@ -17,6 +17,8 @@ The web app accepts drone imagery and supporting control files, retains every pr
   OBJ/MTL/JPEG textured models with Draco GLB fallback, and Spark 2.1
   Gaussian-splat viewing.
 - Local-only `127.0.0.1:8080` binding designed for Tailscale Serve.
+- Optional anonymous, secret-link publishing through a separate read-only
+  gateway and Cloudflare Tunnel at `dronemaps.ashersuter.com`.
 
 ```mermaid
 flowchart LR
@@ -130,11 +132,27 @@ FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correct
 
 Consumer drone GPS is labeled “best effort,” not survey grade. Measurements use the project coordinate reference system when georeferenced products are available. Supplying GCPs changes the label to “GCP-assisted,” but the quality report and control residuals remain authoritative.
 
-Completed, partial, failed, and canceled projects with retained imagery can be
-queued again from **Project actions → Reprocess with different settings**. The
+Completed, partial, failed, and canceled maps with retained imagery can be
+queued again from **Map actions → Reprocess with different settings**. The
 dialog reuses the original uploads and lets the operator change the preset,
 outputs, and allowlisted Advanced values. Existing local results stay available
 until the replacement NodeODM archive has been downloaded and validated.
+
+The UI calls each processed dataset a **Map** and uses **Projects** as optional
+organizational folders for repeated captures of the same site. Existing maps
+remain under **No Project** after upgrading. Moving a map or deleting its
+project changes only SQLite metadata; deleting a project moves its maps back to
+No Project and never removes source imagery or artifacts.
+
+Completed and partial maps can be published from the rightmost **Share** button
+in the results toolbar. Each map has one stable, revocable secret link. The
+public page shows the assigned Project above the map name and exposes only the
+published viewers and downloads—never setup, uploads, processing, reprocessing,
+map deletion, or the local operator API. A completed replacement is published
+atomically after reprocessing; visitors continue seeing the prior published
+result while a new run is incomplete. Public sharing is off by default; follow
+[Operations and recovery](docs/OPERATIONS.md#public-read-only-sharing) to
+configure the dedicated Cloudflare Tunnel.
 
 ## Development
 

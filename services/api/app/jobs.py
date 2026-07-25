@@ -13,6 +13,7 @@ from .config import settings
 from .db import all_rows, decode_project, emit_event, one, transaction, update_project
 from .nodeodm import NodeODMClient, NodeODMError, nodeodm_output_paths
 from .presets import PRESETS, resolve_odm_options
+from .sharing import publish_existing_share
 
 _runner_task: asyncio.Task | None = None
 _wake: asyncio.Event | None = None
@@ -376,6 +377,7 @@ async def process_project(project: dict[str, Any]) -> None:
         await run_splat(project)
     else:
         update_project(project_id, status="completed", stage="Completed", progress=100)
+        publish_existing_share(project_id)
         emit_event(project_id, "state", {"status": "completed", "progress": 100})
 
 
@@ -479,6 +481,7 @@ async def run_splat(project: dict[str, Any]) -> None:
                 + ", ".join(missing_outputs)
             )
         update_project(project_id, status="completed", stage="Completed", progress=100, error=None)
+        publish_existing_share(project_id)
         emit_event(project_id, "state", {"status": "completed", "progress": 100})
     except Exception as exc:
         current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
@@ -516,4 +519,5 @@ async def _demo_process(project: dict[str, Any]) -> None:
         update_project(project_id, status="splatting", stage="Gaussian splat", progress=96)
         await asyncio.sleep(0.7)
     update_project(project_id, status="completed", stage="Completed", progress=100)
+    publish_existing_share(project_id)
     emit_event(project_id, "state", {"status": "completed", "progress": 100})

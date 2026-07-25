@@ -50,6 +50,7 @@ export interface Artifact {
 
 export interface Project {
   id: string;
+  folder_id?: string | null;
   name: string;
   preset: "standard" | "high" | "ultra";
   status: ProjectStatus;
@@ -67,6 +68,38 @@ export interface Project {
   updated_at: string;
   uploads?: Upload[];
   artifacts?: Artifact[];
+}
+
+export type ResultsProject = Pick<
+  Project,
+  "id" | "name" | "preset" | "outputs" | "inspection" | "gcp_used" | "artifacts"
+> & {
+  status: "completed" | "partial";
+};
+
+export interface PublicShareProject extends ResultsProject {
+  folder_name?: string | null;
+}
+
+export interface ShareDetails {
+  enabled: boolean;
+  url: string;
+  view_count: number;
+  last_viewed_at?: string | null;
+  last_published_at?: string | null;
+  publish_error?: string | null;
+}
+
+export interface ShareStatus {
+  configured: boolean;
+  share?: ShareDetails | null;
+}
+
+export interface MapFolder {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Preset {

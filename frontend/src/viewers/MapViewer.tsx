@@ -1,26 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import Map from "ol/Map";
-import View from "ol/View";
-import TileLayer from "ol/layer/Tile";
-import VectorLayer from "ol/layer/Vector";
-import XYZ from "ol/source/XYZ";
-import VectorSource from "ol/source/Vector";
-import Draw from "ol/interaction/Draw";
-import { Fill, Stroke, Style } from "ol/style";
-import { get as getProjection, transform } from "ol/proj";
-import { register } from "ol/proj/proj4";
-import type { Coordinate } from "ol/coordinate";
-import type { LineString, Polygon } from "ol/geom";
+import Map from "ol/Map.js";
+import View from "ol/View.js";
+import TileLayer from "ol/layer/Tile.js";
+import VectorLayer from "ol/layer/Vector.js";
+import XYZ from "ol/source/XYZ.js";
+import VectorSource from "ol/source/Vector.js";
+import Draw from "ol/interaction/Draw.js";
+import { Fill, Stroke, Style } from "ol/style.js";
+import { get as getProjection, transform } from "ol/proj.js";
+import { register } from "ol/proj/proj4.js";
+import type { Coordinate } from "ol/coordinate.js";
+import type { LineString, Polygon } from "ol/geom.js";
 import { Crosshair, MousePointer2, Pentagon, Ruler } from "lucide-react";
 import proj4 from "proj4";
-import { api } from "../lib/api";
+import { api, publicApi } from "../lib/api";
 
 interface Props {
   projectId: string;
   layer: "orthomosaic" | "dsm" | "dtm";
+  publicShare?: boolean;
 }
 
-export function MapViewer({ projectId, layer }: Props) {
+export function MapViewer({ projectId, layer, publicShare = false }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const sourceRef = useRef(new VectorSource());
@@ -43,7 +44,11 @@ export function MapViewer({ projectId, layer }: Props) {
     sourceRef.current.clear();
     setError("");
     setReadout("Loading raster metadata…");
-    void api
+    const dataApi = publicShare ? publicApi : api;
+    const basePath = publicShare
+      ? `/api/public/shares/${projectId}`
+      : `/api/projects/${projectId}`;
+    void dataApi
       .rasterMetadata(projectId, layer)
       .then((metadata) => {
         if (disposed || !target.current) return;
@@ -60,7 +65,7 @@ export function MapViewer({ projectId, layer }: Props) {
         crsLabelRef.current = metadata.crs;
         const raster = new TileLayer({
           source: new XYZ({
-            url: `/api/projects/${projectId}/tiles/${layer}/{z}/{x}/{-y}.png`,
+            url: `${basePath}/tiles/${layer}/{z}/{x}/{-y}.png`,
             crossOrigin: "use-credentials",
             minZoom: metadata.min_zoom,
             maxZoom: metadata.max_zoom,
@@ -103,7 +108,7 @@ export function MapViewer({ projectId, layer }: Props) {
           setReadout(
             `${coordinate[0].toFixed(3)}, ${coordinate[1].toFixed(3)} · sampling ${layer.toUpperCase()}…`,
           );
-          void api
+          void dataApi
             .elevation(projectId, layer, coordinate[0], coordinate[1])
             .then((sample) => {
               const elevation =
@@ -139,7 +144,7 @@ export function MapViewer({ projectId, layer }: Props) {
       }
       mapRef.current = null;
     };
-  }, [projectId, layer]);
+  }, [projectId, layer, publicShare]);
 
   useEffect(() => {
     const map = mapRef.current;

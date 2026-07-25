@@ -4,6 +4,9 @@ build: config-check build-images
 
 build-images: odm-base
 	docker compose build nodeodm splat-worker api frontend
+	@case ",$${COMPOSE_PROFILES:-}," in *,sharing,*) \
+		docker compose --profile sharing build public-gateway ;; \
+	esac
 
 odm-base:
 	@if docker image inspect local-aerial-mapper/odm:3.6.0-gpu >/dev/null 2>&1; then \
@@ -55,4 +58,6 @@ gpu-smoke:
 test:
 	PYTHONPATH=services/api python3 -m pytest services/api/tests
 	npm --prefix frontend run lint
+	npm --prefix frontend run test
 	npm --prefix frontend run build
+	VITE_PUBLIC_SHARE_BUILD=true npm --prefix frontend run build

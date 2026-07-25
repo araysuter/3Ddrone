@@ -157,6 +157,9 @@ services:
       MAPPER_COOKIE_SECURE: ${MAPPER_COOKIE_SECURE:-true}
       MAPPER_SESSION_HOURS: ${MAPPER_SESSION_HOURS:-24}
       MAPPER_DISK_RESERVE_BYTES: ${MAPPER_DISK_RESERVE_BYTES:-5368709120}
+      MAPPER_SHARING_ENABLED: ${MAPPER_SHARING_ENABLED:-false}
+      MAPPER_PUBLIC_BASE_URL: ${MAPPER_PUBLIC_BASE_URL:-https://dronemaps.ashersuter.com}
+      MAPPER_SHARE_SIGNING_KEY: ${MAPPER_SHARE_SIGNING_KEY:-}
       HOME: /tmp
       NODEODM_URL: http://nodeodm:3000
       NODEODM_TOKEN: ${NODEODM_TOKEN:?Set NODEODM_TOKEN in .env}
@@ -182,6 +185,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      target: operator-runtime
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -192,7 +196,38 @@ services:
     <<: *service-security
     networks: [mapper-edge, mapper-internal]
 
+  public-gateway:
+    profiles: ["sharing"]
+    image: local-aerial-mapper/public-gateway:0.1.0
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: public-runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+    <<: *service-security
+    networks: [mapper-public, mapper-internal]
+
+  cloudflared:
+    profiles: ["sharing"]
+    image: cloudflare/cloudflared:2026.7.2
+    command: ["tunnel", "--no-autoupdate", "--loglevel", "info", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      public-gateway:
+        condition: service_healthy
+    read_only: true
+    restart: unless-stopped
+    logging: *default-logging
+    <<: *service-security
+    networks: [mapper-public]
+
 networks:
   mapper-edge:
+  mapper-public:
   mapper-internal:
     internal: true

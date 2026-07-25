@@ -266,6 +266,16 @@ def test_start_rejects_unfinished_and_too_small_photo_sets(authenticated):
 def test_reprocess_reuses_completed_uploads_and_applies_new_settings(authenticated):
     client, csrf = authenticated
     project = create_project(client, csrf, name="Original mapping")
+    folder = client.post(
+        "/api/folders",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "Reprocessing project"},
+    ).json()
+    client.patch(
+        f"/api/projects/{project['id']}/folder",
+        headers={"X-CSRF-Token": csrf},
+        json={"folder_id": folder["id"]},
+    )
     source_paths = []
     for index in range(3):
         content = jpeg_bytes((24 + index, 80 + index, 120))
@@ -307,6 +317,7 @@ def test_reprocess_reuses_completed_uploads_and_applies_new_settings(authenticat
     assert reprocessed["preset"] == "ultra"
     assert reprocessed["status"] == "queued"
     assert reprocessed["progress"] == 0
+    assert reprocessed["folder_id"] == folder["id"]
     assert reprocessed["advanced"] == {"crop": 0.0, "pc-filter": 0.0}
     assert len(reprocessed["uploads"]) == 3
     assert all(upload["state"] == "complete" for upload in reprocessed["uploads"])

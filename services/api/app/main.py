@@ -49,6 +49,11 @@ from .security import (
     start_session,
     verify_admin,
 )
+from .sharing import (
+    refresh_share_folder_labels,
+    remove_project_share,
+    router as sharing_router,
+)
 from .system import metrics
 
 
@@ -70,6 +75,7 @@ app = FastAPI(
     openapi_url=None,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.include_router(sharing_router)
 
 
 class Credentials(BaseModel):
@@ -92,6 +98,7 @@ class ProjectCreate(BaseModel):
     preset: str = "high"
     outputs: dict[str, bool] | None = None
     advanced: dict[str, Any] | None = None
+    folder_id: str | None = Field(default=None, max_length=64)
 
     @field_validator("name")
     @classmethod
@@ -102,6 +109,44 @@ class ProjectCreate(BaseModel):
         if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
             raise ValueError("Project name cannot contain control characters")
         return normalized
+
+    @field_validator("folder_id")
+    @classmethod
+    def normalize_folder_id(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        try:
+            return str(uuid.UUID(value))
+        except ValueError as exc:
+            raise ValueError("Project folder ID must be a UUID") from exc
+
+
+class FolderPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Project name cannot be blank")
+        if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
+            raise ValueError("Project name cannot contain control characters")
+        return normalized
+
+
+class FolderAssignment(BaseModel):
+    folder_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("folder_id")
+    @classmethod
+    def normalize_folder_id(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        try:
+            return str(uuid.UUID(value))
+        except ValueError as exc:
+            raise ValueError("Project folder ID must be a UUID") from exc
 
 
 class UploadCreate(BaseModel):
@@ -346,6 +391,87 @@ def list_projects(_: dict = Depends(require_session)) -> list[dict[str, Any]]:
     ]
 
 
+@app.get("/api/folders")
+def list_folders(_: dict = Depends(require_session)) -> list[dict[str, Any]]:
+    return all_rows(
+        "SELECT id,name,created_at,updated_at FROM map_folders ORDER BY name COLLATE NOCASE,id"
+    )
+
+
+@app.post("/api/folders", status_code=201)
+def create_folder(payload: FolderPayload, _: dict = Depends(require_csrf)) -> dict[str, Any]:
+    folder_id = str(uuid.uuid4())
+    now = utcnow()
+    try:
+        with transaction() as db:
+            db.execute(
+                """
+                INSERT INTO map_folders(id,name,created_at,updated_at)
+                VALUES(?,?,?,?)
+                """,
+                (folder_id, payload.name, now, now),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="A project with this name already exists") from exc
+    return one(
+        "SELECT id,name,created_at,updated_at FROM map_folders WHERE id=?",
+        (folder_id,),
+    )
+
+
+@app.patch("/api/folders/{folder_id}")
+def rename_folder(
+    folder_id: str, payload: FolderPayload, _: dict = Depends(require_csrf)
+) -> dict[str, Any]:
+    now = utcnow()
+    try:
+        with transaction() as db:
+            cursor = db.execute(
+                "UPDATE map_folders SET name=?,updated_at=? WHERE id=?",
+                (payload.name, now, folder_id),
+            )
+            if cursor.rowcount != 1:
+                raise HTTPException(status_code=404, detail="Project not found")
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="A project with this name already exists") from exc
+    refresh_share_folder_labels(
+        [
+            row["id"]
+            for row in all_rows("SELECT id FROM projects WHERE folder_id=?", (folder_id,))
+        ]
+    )
+    return one(
+        "SELECT id,name,created_at,updated_at FROM map_folders WHERE id=?",
+        (folder_id,),
+    )
+
+
+@app.delete("/api/folders/{folder_id}", status_code=204)
+def delete_folder(
+    folder_id: str,
+    confirm: str = Header(alias="X-Confirm-Folder-Name"),
+    _: dict = Depends(require_csrf),
+) -> Response:
+    folder = one("SELECT id,name FROM map_folders WHERE id=?", (folder_id,))
+    if not folder:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if confirm != folder["name"]:
+        raise HTTPException(status_code=409, detail="Project name confirmation does not match")
+    now = utcnow()
+    affected_projects = [
+        row["id"]
+        for row in all_rows("SELECT id FROM projects WHERE folder_id=?", (folder_id,))
+    ]
+    with transaction() as db:
+        db.execute(
+            "UPDATE projects SET folder_id=NULL,updated_at=? WHERE folder_id=?",
+            (now, folder_id),
+        )
+        db.execute("DELETE FROM map_folders WHERE id=?", (folder_id,))
+    refresh_share_folder_labels(affected_projects)
+    return Response(status_code=204)
+
+
 @app.post("/api/projects", status_code=201)
 def create_project(payload: ProjectCreate, _: dict = Depends(require_csrf)) -> dict[str, Any]:
     if payload.preset not in PRESETS:
@@ -358,15 +484,20 @@ def create_project(payload: ProjectCreate, _: dict = Depends(require_csrf)) -> d
     project_id = str(uuid.uuid4())
     now = utcnow()
     with transaction() as db:
+        if payload.folder_id and not db.execute(
+            "SELECT 1 FROM map_folders WHERE id=?", (payload.folder_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Project folder not found")
         db.execute(
             """
             INSERT INTO projects(
-              id,name,preset,status,stage,progress,outputs_json,advanced_json,
+              id,folder_id,name,preset,status,stage,progress,outputs_json,advanced_json,
               inspection_json,created_at,updated_at
-            ) VALUES(?,?,?,'uploading','Waiting for files',0,?,?,?, ?,?)
+            ) VALUES(?,?,?,?,'uploading','Waiting for files',0,?,?,?, ?,?)
             """,
             (
                 project_id,
+                payload.folder_id,
                 payload.name.strip(),
                 payload.preset,
                 json.dumps(outputs),
@@ -384,6 +515,26 @@ def create_project(payload: ProjectCreate, _: dict = Depends(require_csrf)) -> d
 
 @app.get("/api/projects/{project_id}")
 def project_detail(project_id: str, _: dict = Depends(require_session)) -> dict[str, Any]:
+    return get_project(project_id)
+
+
+@app.patch("/api/projects/{project_id}/folder")
+def assign_project_folder(
+    project_id: str,
+    payload: FolderAssignment,
+    _: dict = Depends(require_csrf),
+) -> dict[str, Any]:
+    get_project(project_id)
+    with transaction() as db:
+        if payload.folder_id and not db.execute(
+            "SELECT 1 FROM map_folders WHERE id=?", (payload.folder_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Project folder not found")
+        db.execute(
+            "UPDATE projects SET folder_id=?,updated_at=? WHERE id=?",
+            (payload.folder_id, utcnow(), project_id),
+        )
+    refresh_share_folder_labels([project_id])
     return get_project(project_id)
 
 
@@ -773,6 +924,7 @@ async def delete_project(
         row["id"]
         for row in all_rows("SELECT id FROM uploads WHERE project_id=?", (project_id,))
     ]
+    remove_project_share(project_id)
     with transaction() as db:
         db.execute("DELETE FROM projects WHERE id=?", (project_id,))
     for upload_id in upload_ids:

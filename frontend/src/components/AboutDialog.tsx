@@ -1,13 +1,25 @@
 import { ExternalLink, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, publicApi } from "../lib/api";
 
-export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AboutDialog({
+  open,
+  onClose,
+  publicView = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  publicView?: boolean;
+}) {
   const [about, setAbout] = useState<Awaited<ReturnType<typeof api.about>>>();
 
   useEffect(() => {
-    if (open) api.about().then(setAbout).catch(() => undefined);
-  }, [open]);
+    if (open) {
+      (publicView ? publicApi.about() : api.about())
+        .then(setAbout)
+        .catch(() => undefined);
+    }
+  }, [open, publicView]);
 
   if (!open) return null;
   return (

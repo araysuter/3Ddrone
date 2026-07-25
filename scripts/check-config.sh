@@ -29,11 +29,18 @@ mapper_gid="$(read_value MAPPER_GID)"
 cookie_secure="$(read_value MAPPER_COOKIE_SECURE)"
 session_hours="$(read_value MAPPER_SESSION_HOURS)"
 disk_reserve_bytes="$(read_value MAPPER_DISK_RESERVE_BYTES)"
+sharing_enabled="$(read_value MAPPER_SHARING_ENABLED)"
+public_base_url="$(read_value MAPPER_PUBLIC_BASE_URL)"
+share_signing_key="$(read_value MAPPER_SHARE_SIGNING_KEY)"
+cloudflare_tunnel_token="$(read_value CLOUDFLARE_TUNNEL_TOKEN)"
+compose_profiles="$(read_value COMPOSE_PROFILES)"
 mapper_uid="${mapper_uid:-1000}"
 mapper_gid="${mapper_gid:-1000}"
 cookie_secure="${cookie_secure:-true}"
 session_hours="${session_hours:-24}"
 disk_reserve_bytes="${disk_reserve_bytes:-5368709120}"
+sharing_enabled="${sharing_enabled:-false}"
+public_base_url="${public_base_url:-https://dronemaps.ashersuter.com}"
 
 [[ "$data_dir" == /* ]] || fail "MAPPER_DATA_DIR must be an absolute host path"
 [[ "$data_dir" != "/" ]] || fail "MAPPER_DATA_DIR cannot be the filesystem root"
@@ -61,5 +68,33 @@ done
     || fail "MAPPER_DISK_RESERVE_BYTES must be a whole number of bytes"
 (( disk_reserve_bytes >= 1073741824 )) \
     || fail "MAPPER_DISK_RESERVE_BYTES must reserve at least 1 GiB"
+
+[[ "$sharing_enabled" == "true" || "$sharing_enabled" == "false" ]] \
+    || fail "MAPPER_SHARING_ENABLED must be true or false"
+
+sharing_profile=false
+IFS=',' read -ra profile_list <<< "$compose_profiles"
+for profile in "${profile_list[@]}"; do
+    [[ "${profile//[[:space:]]/}" == "sharing" ]] && sharing_profile=true
+done
+
+if [[ "$sharing_enabled" == "true" || "$sharing_profile" == "true" ]]; then
+    [[ "$sharing_enabled" == "true" ]] \
+        || fail "the sharing Compose profile requires MAPPER_SHARING_ENABLED=true"
+    [[ "$sharing_profile" == "true" ]] \
+        || fail "public sharing requires COMPOSE_PROFILES=sharing"
+    [[ "$public_base_url" == "https://dronemaps.ashersuter.com" ]] \
+        || fail "MAPPER_PUBLIC_BASE_URL must be https://dronemaps.ashersuter.com"
+    [[ ${#share_signing_key} -ge 32 ]] \
+        || fail "MAPPER_SHARE_SIGNING_KEY must contain at least 32 characters"
+    [[ "$share_signing_key" != replace-with-* ]] \
+        || fail "MAPPER_SHARE_SIGNING_KEY still contains the example placeholder"
+    [[ "$share_signing_key" != "$nodeodm_token" && "$share_signing_key" != "$internal_token" ]] \
+        || fail "the public share signing key must differ from both service tokens"
+    [[ ${#cloudflare_tunnel_token} -ge 32 ]] \
+        || fail "CLOUDFLARE_TUNNEL_TOKEN is missing or too short"
+    [[ "$cloudflare_tunnel_token" != replace-with-* ]] \
+        || fail "CLOUDFLARE_TUNNEL_TOKEN still contains the example placeholder"
+fi
 
 echo "Mapper configuration check passed."

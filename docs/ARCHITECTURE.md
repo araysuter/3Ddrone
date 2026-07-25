@@ -8,7 +8,21 @@ Docker `internal: true` network. NodeODM also requires its own random token; the
 splat worker requires a different internal token. The browser never receives
 either service token.
 
-The API owns project state. NodeODM remains authoritative for ODM task progress and console output. The API uses only NodeODM’s initialize/upload/commit, info, output, cancel, restart, remove, options, and `all.zip` download routes. It does not mutate NodeODM task directories.
+The optional `sharing` profile adds `public-gateway` and `cloudflared`.
+Cloudflared joins only `mapper-public`; it cannot address the API, NodeODM, or
+splat worker. The public Nginx gateway joins `mapper-public` and
+`mapper-internal`, serves a public-only Vite build, and proxies only
+`/api/public/about` plus scoped read-only share routes. It returns 404 for the
+operator API. The private frontend and its `127.0.0.1:8080` binding do not join
+the public network.
+
+The API owns processing-map state. The legacy `projects` table and
+`/api/projects` routes continue to represent individual maps for compatibility;
+the UI's one-level Projects are stored separately in `map_folders`. NodeODM
+remains authoritative for ODM task progress and console output. The API uses
+only NodeODM’s initialize/upload/commit, info, output, cancel, restart, remove,
+options, and `all.zip` download routes. It does not mutate NodeODM task
+directories.
 
 All long-running containers drop Linux capabilities and enable
 `no-new-privileges`. Nginx uses its unprivileged image, while API and worker
@@ -27,13 +41,41 @@ source/<project UUID>/       Validated originals and support files
 nodeodm/<task UUID>/         NodeODM-owned durable task state
 splat/jobs/                  Durable splat job records
 splat/work/<project UUID>/   Optional COLMAP export, ODM conversion, checkpoints, and recovery state
-metadata/mapper.sqlite3      Users, sessions, projects, uploads, and SSE events
+metadata/mapper.sqlite3      Users, sessions, maps, folders, uploads, and SSE events
 metadata/projects/<UUID>/    Extracted allowlisted artifacts and all.zip
+metadata/shares/<UUID>/      Hard-linked, versioned public result snapshots
 logs/nodeodm/                NodeODM logs
 uploads/                     Incomplete resumable parts
 ```
 
-Deleting a project requires the exact project name in `X-Confirm-Project-Name`. The API rejects deletion while the project is active. No background retention policy removes completed project data.
+Deleting a map requires its exact name in `X-Confirm-Project-Name`. The API
+rejects map deletion while processing is active. Deleting a map folder requires
+`X-Confirm-Folder-Name`; the transaction assigns its maps to No Project before
+removing only the folder row. No background retention policy removes completed
+map data.
+
+Map folders contain only an ID, a case-insensitively unique display name, and
+timestamps. `projects.folder_id` is nullable with `ON DELETE SET NULL`. Moving
+an active or completed map between folders does not change its job, upload,
+artifact, or event records.
+
+## Public sharing
+
+`project_shares` stores one share ID per map, an HMAC generation, enabled state,
+aggregate page-view count, last-viewed time, and the active snapshot version.
+The URL places its HMAC bearer secret in the fragment, so the initial secret is
+not sent in HTTP requests or proxy logs. A successful authorization exchange
+sets a share-specific, path-scoped, HttpOnly cookie. Disabling a link checks the
+database on every request; regeneration increments its generation so both the
+old URL and old scoped cookie immediately fail.
+
+Publication creates a new immutable hard-link tree from the currently
+allowlisted artifact set and atomically points the share row to it. Reprocessing
+does not modify that tree. Only a newly completed map replaces the public
+snapshot, after which the old version is removed. Public responses are
+`private, no-store`, carry `X-Robots-Tag: noindex`, and contain a sanitized
+project snapshot without internal task IDs, paths, errors, uploads, source
+metadata, advanced settings, or service state.
 
 NodeODM receives an effectively non-expiring task retention value because
 upstream interprets zero as immediate deletion. Its temporary, uncommitted

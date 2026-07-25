@@ -62,8 +62,15 @@ def init_db() -> None:
               blocked_until TEXT,
               updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS map_folders (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS projects (
               id TEXT PRIMARY KEY,
+              folder_id TEXT REFERENCES map_folders(id) ON DELETE SET NULL,
               name TEXT NOT NULL,
               preset TEXT NOT NULL,
               status TEXT NOT NULL,
@@ -103,6 +110,22 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_events_project
               ON project_events(project_id, id);
+            CREATE TABLE IF NOT EXISTS project_shares (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+              generation INTEGER NOT NULL DEFAULT 1 CHECK (generation >= 1),
+              enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+              snapshot_version TEXT,
+              snapshot_json TEXT NOT NULL DEFAULT '{}',
+              view_count INTEGER NOT NULL DEFAULT 0 CHECK (view_count >= 0),
+              last_viewed_at TEXT,
+              last_published_at TEXT,
+              publish_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_shares_project
+              ON project_shares(project_id);
             """
         )
         project_columns = {
@@ -112,6 +135,16 @@ def init_db() -> None:
             db.execute(
                 "ALTER TABLE projects ADD COLUMN nodeodm_output_line INTEGER NOT NULL DEFAULT 0"
             )
+        if "folder_id" not in project_columns:
+            db.execute(
+                """
+                ALTER TABLE projects
+                ADD COLUMN folder_id TEXT REFERENCES map_folders(id) ON DELETE SET NULL
+                """
+            )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_projects_folder_id ON projects(folder_id)"
+        )
         db.execute("DELETE FROM sessions WHERE expires_at <= ?", (utcnow(),))
 
 

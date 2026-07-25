@@ -4,6 +4,7 @@ import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def _env_int(name: str, default: int) -> int:
@@ -27,6 +28,11 @@ class Settings:
     nodeodm_token: str = os.getenv("NODEODM_TOKEN", "")
     splat_url: str = os.getenv("SPLAT_URL", "http://splat-worker:8090").rstrip("/")
     internal_token: str = os.getenv("MAPPER_INTERNAL_TOKEN", "")
+    sharing_enabled: bool = _env_bool("MAPPER_SHARING_ENABLED", False)
+    public_base_url: str = os.getenv(
+        "MAPPER_PUBLIC_BASE_URL", "https://dronemaps.ashersuter.com"
+    ).rstrip("/")
+    share_signing_key: str = os.getenv("MAPPER_SHARE_SIGNING_KEY", "")
     cookie_secure: bool = _env_bool("MAPPER_COOKIE_SECURE", True)
     demo_mode: bool = _env_bool("MAPPER_DEMO_MODE", False)
     session_hours: int = _env_int("MAPPER_SESSION_HOURS", 24)
@@ -66,6 +72,35 @@ class Settings:
             )
         if self.project_event_limit < 1_000:
             raise RuntimeError("MAPPER_PROJECT_EVENT_LIMIT must be at least 1000")
+        if self.sharing_enabled:
+            public_url = urlsplit(self.public_base_url)
+            if (
+                public_url.scheme != "https"
+                or not public_url.hostname
+                or public_url.username
+                or public_url.password
+                or public_url.query
+                or public_url.fragment
+                or public_url.path not in {"", "/"}
+            ):
+                raise RuntimeError(
+                    "MAPPER_PUBLIC_BASE_URL must be an HTTPS origin without a path, query, or fragment"
+                )
+            if (
+                len(self.share_signing_key) < 32
+                or self.share_signing_key.startswith("replace-with-")
+            ):
+                raise RuntimeError(
+                    "MAPPER_SHARE_SIGNING_KEY must be a random 32+ character secret"
+                )
+            if self.share_signing_key in {self.nodeodm_token, self.internal_token}:
+                raise RuntimeError(
+                    "MAPPER_SHARE_SIGNING_KEY must differ from the service tokens"
+                )
+            if not self.demo_mode and not self.cookie_secure:
+                raise RuntimeError(
+                    "MAPPER_COOKIE_SECURE must remain true when public sharing is enabled"
+                )
         if not self.demo_mode:
             for name, token in (
                 ("NODEODM_TOKEN", self.nodeodm_token),

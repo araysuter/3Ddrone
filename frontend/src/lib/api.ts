@@ -1,4 +1,12 @@
-import type { AdvancedOption, Artifact, Project, SystemMetrics } from "../types";
+import type {
+  AdvancedOption,
+  Artifact,
+  MapFolder,
+  Project,
+  PublicShareProject,
+  ShareStatus,
+  SystemMetrics,
+} from "../types";
 import { createSHA256 } from "hash-wasm";
 
 let csrfToken = "";
@@ -67,11 +75,33 @@ export const api = {
   },
   listProjects: () => request<Project[]>("/api/projects"),
   getProject: (id: string) => request<Project>(`/api/projects/${id}`),
+  listFolders: () => request<MapFolder[]>("/api/folders"),
+  createFolder: (name: string) =>
+    request<MapFolder>("/api/folders", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  renameFolder: (id: string, name: string) =>
+    request<MapFolder>(`/api/folders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  deleteFolder: (folder: MapFolder) =>
+    request<void>(`/api/folders/${folder.id}`, {
+      method: "DELETE",
+      headers: { "X-Confirm-Folder-Name": folder.name },
+    }),
+  assignProjectFolder: (id: string, folderId: string | null) =>
+    request<Project>(`/api/projects/${id}/folder`, {
+      method: "PATCH",
+      body: JSON.stringify({ folder_id: folderId }),
+    }),
   createProject: (payload: {
     name: string;
     preset: string;
     outputs: Record<string, boolean>;
     advanced?: Record<string, unknown>;
+    folder_id?: string | null;
   }) =>
     request<Project>("/api/projects", {
       method: "POST",
@@ -130,7 +160,49 @@ export const api = {
       engines: Record<string, string>;
       warranty: string;
     }>("/api/about"),
+  shareStatus: (id: string) =>
+    request<ShareStatus>(`/api/projects/${id}/share`),
+  enableShare: (id: string) =>
+    request<ShareStatus>(`/api/projects/${id}/share`, { method: "POST" }),
+  disableShare: (id: string) =>
+    request<ShareStatus>(`/api/projects/${id}/share`, { method: "DELETE" }),
+  regenerateShare: (id: string) =>
+    request<ShareStatus>(`/api/projects/${id}/share/regenerate`, { method: "POST" }),
   options: () => request<{ options: AdvancedOption[] }>("/api/options"),
+};
+
+export const publicApi = {
+  authorize: (shareId: string, secret: string) =>
+    request<{ authorized: boolean }>(`/api/public/shares/${shareId}/authorize`, {
+      method: "POST",
+      body: JSON.stringify({ secret }),
+    }),
+  getShare: (shareId: string) =>
+    request<PublicShareProject>(`/api/public/shares/${shareId}`),
+  elevation: (shareId: string, layer: "dsm" | "dtm", x: number, y: number) =>
+    request<{ elevation: number | null; crs: string }>(
+      `/api/public/shares/${shareId}/elevation?layer=${layer}&x=${x}&y=${y}`,
+    ),
+  rasterMetadata: (shareId: string, layer: "orthomosaic" | "dsm" | "dtm") =>
+    request<{
+      layer: string;
+      crs: string;
+      crs_proj4: string;
+      bounds: [number, number, number, number];
+      bounds_3857: [number, number, number, number];
+      min_zoom: number;
+      max_zoom: number;
+      tile_scheme: "tms";
+      units: string;
+    }>(`/api/public/shares/${shareId}/raster-metadata?layer=${layer}`),
+  about: () =>
+    request<{
+      name: string;
+      license: string;
+      source: string;
+      engines: Record<string, string>;
+      warranty: string;
+    }>("/api/public/about"),
 };
 
 const CHUNK_SIZE = 5 * 1024 * 1024;

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError, uploadFiles } from "./lib/api";
-import type { Project, SystemMetrics } from "./types";
+import type { MapFolder, Project, SystemMetrics } from "./types";
 import { AboutDialog } from "./components/AboutDialog";
 import { AuthScreen } from "./components/AuthScreen";
 import { NewProjectDialog } from "./components/NewProjectDialog";
+import { ProjectFolderDialog } from "./components/ProjectFolderDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Workspace } from "./components/Workspace";
 
@@ -12,12 +13,18 @@ type AuthState = "loading" | "setup" | "login" | "ready";
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("loading");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [folders, setFolders] = useState<MapFolder[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newMapOpen, setNewMapOpen] = useState(false);
   const [reprocessProjectId, setReprocessProjectId] = useState<string>();
+  const [folderDialog, setFolderDialog] = useState<{
+    mode: "create" | "rename";
+    folder?: MapFolder;
+  }>();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
+  const [savingFolder, setSavingFolder] = useState(false);
   const [logs, setLogs] = useState<Record<string, string[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [metrics, setMetrics] = useState<SystemMetrics>();
@@ -30,9 +37,14 @@ export default function App() {
     () => projects.find((project) => project.id === reprocessProjectId),
     [projects, reprocessProjectId],
   );
+  const folderNames = useMemo(
+    () => new Map(folders.map((folder) => [folder.id, folder.name])),
+    [folders],
+  );
 
   const refresh = useCallback(async () => {
-    const list = await api.listProjects();
+    const [list, folderList] = await Promise.all([api.listProjects(), api.listFolders()]);
+    setFolders(folderList);
     setProjects((current) =>
       list.map((project) => {
         const existing = current.find((candidate) => candidate.id === project.id);
@@ -72,6 +84,7 @@ export default function App() {
     const unauthorized = () => {
       setAuth("login");
       setProjects([]);
+      setFolders([]);
       setSelectedId(undefined);
     };
     window.addEventListener("mapper:unauthorized", unauthorized);
@@ -119,6 +132,7 @@ export default function App() {
     preset: string;
     outputs: Record<string, boolean>;
     advanced: Record<string, unknown>;
+    folder_id: string | null;
     files: File[];
   }) {
     setCreating(true);
@@ -129,11 +143,12 @@ export default function App() {
         preset: payload.preset,
         outputs: payload.outputs,
         advanced: payload.advanced,
+        folder_id: payload.folder_id,
       });
       createdProject = project;
       setProjects((current) => [project, ...current]);
       setSelectedId(project.id);
-      setNewProjectOpen(false);
+      setNewMapOpen(false);
       const progressByFile = new Map<string, number>();
       await uploadFiles(project.id, payload.files, (file, progress) => {
         progressByFile.set(`${file.name}:${file.size}`, progress);
@@ -176,11 +191,17 @@ export default function App() {
     preset: string;
     outputs: Record<string, boolean>;
     advanced: Record<string, unknown>;
+    folder_id: string | null;
   }) {
     if (!reprocessProject) return;
     setReprocessing(true);
     try {
-      const updated = await api.reprocessProject(reprocessProject.id, payload);
+      const updated = await api.reprocessProject(reprocessProject.id, {
+        name: payload.name,
+        preset: payload.preset,
+        outputs: payload.outputs,
+        advanced: payload.advanced,
+      });
       setProjects((current) =>
         current.map((project) => (project.id === updated.id ? updated : project)),
       );
@@ -198,6 +219,7 @@ export default function App() {
     } finally {
       setAuth("login");
       setProjects([]);
+      setFolders([]);
       setSelectedId(undefined);
     }
   }
@@ -229,6 +251,65 @@ export default function App() {
     }
   }
 
+  async function saveFolder(name: string) {
+    if (!folderDialog) return;
+    setSavingFolder(true);
+    try {
+      const saved =
+        folderDialog.mode === "rename" && folderDialog.folder
+          ? await api.renameFolder(folderDialog.folder.id, name)
+          : await api.createFolder(name);
+      setFolders((current) => {
+        const exists = current.some((folder) => folder.id === saved.id);
+        return exists
+          ? current.map((folder) => (folder.id === saved.id ? saved : folder))
+          : [...current, saved];
+      });
+      setFolderDialog(undefined);
+    } finally {
+      setSavingFolder(false);
+    }
+  }
+
+  async function deleteFolder(folder: MapFolder) {
+    const count = projects.filter((project) => project.folder_id === folder.id).length;
+    if (
+      !window.confirm(
+        `Delete project “${folder.name}”? ${count} map${count === 1 ? "" : "s"} will move to No Project. No map data will be deleted.`,
+      )
+    ) {
+      return;
+    }
+    await api.deleteFolder(folder);
+    setFolders((current) => current.filter((candidate) => candidate.id !== folder.id));
+    setProjects((current) =>
+      current.map((project) =>
+        project.folder_id === folder.id ? { ...project, folder_id: null } : project,
+      ),
+    );
+  }
+
+  async function moveMap(mapId: string, folderId: string | null) {
+    const previous = projects.find((project) => project.id === mapId);
+    if (!previous) throw new Error("Map no longer exists");
+    setProjects((current) =>
+      current.map((project) =>
+        project.id === mapId ? { ...project, folder_id: folderId } : project,
+      ),
+    );
+    try {
+      const updated = await api.assignProjectFolder(mapId, folderId);
+      setProjects((current) =>
+        current.map((project) => (project.id === mapId ? { ...project, ...updated } : project)),
+      );
+    } catch (reason) {
+      setProjects((current) =>
+        current.map((project) => (project.id === mapId ? previous : project)),
+      );
+      throw reason;
+    }
+  }
+
   if (auth === "loading") {
     return <div className="boot-screen">STARTING LOCAL MAPPER…</div>;
   }
@@ -239,10 +320,15 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar
-        projects={projects}
+        maps={projects}
+        folders={folders}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        onNew={() => setNewProjectOpen(true)}
+        onNewMap={() => setNewMapOpen(true)}
+        onNewFolder={() => setFolderDialog({ mode: "create" })}
+        onRenameFolder={(folder) => setFolderDialog({ mode: "rename", folder })}
+        onDeleteFolder={deleteFolder}
+        onMoveMap={moveMap}
         onAbout={() => setAboutOpen(true)}
         onLogout={logout}
         uploadProgress={uploadProgress}
@@ -252,16 +338,21 @@ export default function App() {
         logs={selected ? logs[selected.id] ?? [] : []}
         uploadProgress={selected ? uploadProgress[selected.id] : undefined}
         metrics={metrics}
+        folderName={selected?.folder_id ? folderNames.get(selected.folder_id) : undefined}
         onChanged={refresh}
         onResumeUploads={resumeUploads}
         onReprocess={(project) => setReprocessProjectId(project.id)}
       />
-      <NewProjectDialog
-        open={newProjectOpen}
-        busy={creating}
-        onClose={() => !creating && setNewProjectOpen(false)}
-        onSubmit={createProject}
-      />
+      {newMapOpen && (
+        <NewProjectDialog
+          open
+          folders={folders}
+          defaultFolderId={selected?.folder_id ?? null}
+          busy={creating}
+          onClose={() => !creating && setNewMapOpen(false)}
+          onSubmit={createProject}
+        />
+      )}
       {reprocessProject && (
         <NewProjectDialog
           key={reprocessProject.id}
@@ -271,6 +362,16 @@ export default function App() {
           busy={reprocessing}
           onClose={() => !reprocessing && setReprocessProjectId(undefined)}
           onSubmit={reprocessExistingProject}
+        />
+      )}
+      {folderDialog && (
+        <ProjectFolderDialog
+          key={`${folderDialog.mode}:${folderDialog.folder?.id ?? "new"}`}
+          mode={folderDialog.mode}
+          initialName={folderDialog.folder?.name}
+          busy={savingFolder}
+          onClose={() => !savingFolder && setFolderDialog(undefined)}
+          onSubmit={saveFolder}
         />
       )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
