@@ -16,6 +16,12 @@ splat worker. The public Nginx gateway joins `mapper-public` and
 operator API. The private frontend and its `127.0.0.1:8080` binding do not join
 the public network.
 
+The public Vite entry renders the same `ResultsView` and `MapViewer` components
+as the operator UI. The `publicShare` flag changes only artifact, raster, and
+elevation requests to the restricted public API, so Inspect, Distance, Area,
+measurement units, labels, Escape behavior, and Clear remain one shared
+implementation across private and recipient-facing views.
+
 The API owns processing-map state. The legacy `projects` table and
 `/api/projects` routes continue to represent individual maps for compatibility;
 the UI's one-level Projects are stored separately in `map_folders`. NodeODM

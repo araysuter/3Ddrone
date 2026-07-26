@@ -92,7 +92,9 @@ At 1440×900 and 1280×720:
    authenticated and public-share viewers, confirm imperial is the first-visit
    default, the `ft`/`m` choice persists, distance totals and area side/center
    labels update live, Escape finishes a valid distance polyline, Escape
-   cancels a one-point attempt without leaving Distance mode, and labels remain
+   cancels a one-point attempt without leaving Distance mode, Escape closes and
+   finishes an area with at least three placed corners, and Escape cancels a
+   one- or two-corner area attempt without leaving Area mode. Labels must remain
    fixed-size and decluttered when zoomed out. Confirm **Clear** removes every
    completed distance and area measurement plus any active sketch without
    leaving the selected measurement mode.

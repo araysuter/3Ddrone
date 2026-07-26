@@ -17,6 +17,10 @@
   - `/tmp/3ddrone-clear-before.png` (`1280 × 720`).
   - `/tmp/3ddrone-clear-after.png` (`1280 × 720`).
   - `/tmp/3ddrone-clear-mobile.png` (`390 × 760`).
+  - `/tmp/3ddrone-area-escape-finished.png` (`1280 × 720`).
+  - `/tmp/3ddrone-area-escape-cancelled.png` (`1280 × 720`).
+  - `/tmp/3ddrone-public-share-measurement-ui.png` (`1280 × 720`).
+  - `/tmp/3ddrone-public-share-measurements.png` (`1280 × 720`).
 - Comparison artifacts:
   - `/tmp/3ddrone-distance-focused-comparison.png`.
   - `/tmp/3ddrone-full-view-comparison.jpg`.
@@ -37,6 +41,11 @@
   measurements plus an active sketch without leaving the selected tool.
 - Public share: authorization, imperial default, unit toggle, completed
   distance label, coordinate toolbar, and the same measurement controls.
+  Escape closes a three-corner area without requiring a click on the starting
+  point, cancels a one-corner area, and retains Area mode in both cases. A
+  dedicated parity pass confirmed Inspect, Distance, Area, Clear, `ft`/`m`,
+  fixed-size labels, and coordinate readout all render from the shared
+  `MapViewer`.
 - Responsive public share at `390 × 760`: toolbar remains horizontally
   scrollable, measurement modes and unit controls remain reachable, and the
   viewer/footer do not overlap.
@@ -63,8 +72,8 @@
   has pressed state and keyboard focus treatment.
 - Responsiveness and accessibility: labels stay fixed in screen pixels,
   short/colliding side labels are eligible for suppression, the map is
-  keyboard-focusable, and Escape behavior is scoped to an active Distance
-  sketch.
+  keyboard-focusable, and Escape behavior is scoped to an active Distance or
+  Area sketch.
 
 ## Findings
 
@@ -88,7 +97,9 @@
 - [x] Coordinate toolbar remains active in every measurement mode.
 - [x] Unit preference defaults to imperial, persists, and works in shared views.
 - [x] Escape finishes or cancels Distance according to placed-point count.
+- [x] Escape closes a valid Area or cancels it when fewer than three corners exist.
 - [x] Clear removes all completed measurements and the active sketch.
+- [x] Public shares expose the same measurement toolbar and interactions.
 - [x] Desktop, far-zoom, public-share, and mobile states pass rendered QA.
 
 final result: passed

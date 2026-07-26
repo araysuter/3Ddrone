@@ -3,6 +3,7 @@ import Polygon from "ol/geom/Polygon.js";
 import { describe, expect, it } from "vitest";
 import {
   MEASUREMENT_UNITS_STORAGE_KEY,
+  canFinishMeasurementSketch,
   formatArea,
   formatLength,
   measureLine,
@@ -29,6 +30,55 @@ describe("measurement formatting", () => {
 });
 
 describe("measurement geometry", () => {
+  it("recognizes when active distance and area sketches can be finished", () => {
+    expect(
+      canFinishMeasurementSketch(
+        "distance",
+        new LineString([
+          [0, 0],
+          [1, 1],
+        ]),
+      ),
+    ).toBe(false);
+    expect(
+      canFinishMeasurementSketch(
+        "distance",
+        new LineString([
+          [0, 0],
+          [1, 1],
+          [2, 0],
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      canFinishMeasurementSketch(
+        "area",
+        new Polygon([
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 0],
+          ],
+        ]),
+      ),
+    ).toBe(false);
+    expect(
+      canFinishMeasurementSketch(
+        "area",
+        new Polygon([
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 2],
+            [0, 0],
+          ],
+        ]),
+      ),
+    ).toBe(true);
+  });
+
   it("places a polyline total at the length-along-line midpoint", () => {
     const line = new LineString([
       [0, 0],

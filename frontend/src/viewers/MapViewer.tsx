@@ -16,7 +16,6 @@ import { get as getProjection, transform } from "ol/proj.js";
 import { register } from "ol/proj/proj4.js";
 import type { Coordinate } from "ol/coordinate.js";
 import type Geometry from "ol/geom/Geometry.js";
-import LineString from "ol/geom/LineString.js";
 import { Crosshair, Eraser, MousePointer2, Pentagon, Ruler } from "lucide-react";
 import proj4 from "proj4";
 import { api, publicApi } from "../lib/api";
@@ -25,6 +24,7 @@ import {
   createMeasurementStyleFunction,
 } from "../lib/mapMeasurementStyles";
 import {
+  canFinishMeasurementSketch,
   readMeasurementUnits,
   writeMeasurementUnits,
   type MeasurementUnits,
@@ -240,13 +240,14 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
   }, [tool, mapReady]);
 
   function handleMapKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "Escape" || toolRef.current !== "distance") return;
+    const activeTool = toolRef.current;
+    if (event.key !== "Escape" || activeTool === "inspect") return;
     const draw = drawRef.current;
     const activeSketch = activeSketchRef.current;
     const geometry = activeSketch?.getGeometry();
-    if (!draw || !(geometry instanceof LineString)) return;
+    if (!draw || !geometry) return;
 
-    if (geometry.getCoordinates().length >= 3) {
+    if (canFinishMeasurementSketch(activeTool, geometry)) {
       draw.finishDrawing();
     } else {
       draw.abortDrawing();

@@ -1,8 +1,10 @@
 import type { Coordinate } from "ol/coordinate.js";
+import type Geometry from "ol/geom/Geometry.js";
 import LineString from "ol/geom/LineString.js";
 import Polygon from "ol/geom/Polygon.js";
 
 export type MeasurementUnits = "imperial" | "metric";
+export type MeasurementTool = "distance" | "area";
 
 export const MEASUREMENT_UNITS_STORAGE_KEY =
   "local-aerial-mapper:measurement-units:v1";
@@ -30,6 +32,23 @@ export interface PolygonMeasurement {
   areaSquareMeters: number;
   coordinate: Coordinate;
   segments: SegmentMeasurement[];
+}
+
+export function canFinishMeasurementSketch(
+  tool: MeasurementTool,
+  geometry: Geometry,
+) {
+  if (tool === "distance") {
+    return (
+      geometry instanceof LineString && geometry.getCoordinates().length >= 3
+    );
+  }
+
+  if (!(geometry instanceof Polygon)) return false;
+  const ring = geometry.getCoordinates()[0] ?? [];
+  // An active OpenLayers polygon includes both its moving preview coordinate
+  // and its closing coordinate, in addition to the placed corners.
+  return ring.length >= 5;
 }
 
 export function readMeasurementUnits(storage?: StorageReader | null): MeasurementUnits {
