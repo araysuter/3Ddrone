@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import json
 import math
 import os
-import secrets
 import shutil
 import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
 
 from .artifacts import (
     artifact_path_allowed_for_root,
@@ -35,10 +30,6 @@ PUBLIC_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
 }
-
-
-class ShareAuthorization(BaseModel):
-    secret: str = Field(min_length=32, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 def _sharing_required() -> None:
@@ -72,27 +63,8 @@ def _snapshot_root(share: dict[str, Any]) -> Path:
     return root
 
 
-def _signature(purpose: str, share_id: str, generation: int) -> str:
-    digest = hmac.new(
-        settings.share_signing_key.encode(),
-        f"{purpose}:{share_id}:{generation}".encode(),
-        hashlib.sha256,
-    ).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-
-
 def _share_url(share: dict[str, Any]) -> str:
-    secret = _signature("link", share["id"], int(share["generation"]))
-    return f"{settings.public_base_url}/share/{share['id']}#{secret}"
-
-
-def _cookie_name(share_id: str) -> str:
-    return f"mapper_share_{share_id.replace('-', '')}"
-
-
-def _cookie_value(share: dict[str, Any]) -> str:
-    generation = int(share["generation"])
-    return f"{generation}.{_signature('cookie', share['id'], generation)}"
+    return f"{settings.public_base_url}/share/{share['id']}"
 
 
 def _set_no_store(response: Response) -> None:
@@ -376,80 +348,55 @@ def regenerate_share(
     share = one("SELECT * FROM project_shares WHERE project_id=?", (project_id,))
     if not share or not share.get("snapshot_version"):
         raise HTTPException(status_code=404, detail="Share link does not exist")
-    with transaction() as db:
-        db.execute(
-            """
-            UPDATE project_shares
-            SET generation=generation+1,view_count=0,last_viewed_at=NULL,updated_at=?
-            WHERE id=?
-            """,
-            (utcnow(), share["id"]),
-        )
+    old_id = share["id"]
+    old_root = _share_root(old_id)
+    if not old_root.is_dir():
+        raise HTTPException(status_code=409, detail="Published share files are unavailable")
+    while True:
+        new_id = str(uuid.uuid4())
+        new_root = _share_root(new_id)
+        if not new_root.exists() and not one(
+            "SELECT id FROM project_shares WHERE id=?", (new_id,)
+        ):
+            break
+    moved = False
+    try:
+        with transaction() as db:
+            db.execute(
+                """
+                UPDATE project_shares
+                SET id=?,generation=generation+1,view_count=0,last_viewed_at=NULL,updated_at=?
+                WHERE id=?
+                """,
+                (new_id, utcnow(), old_id),
+            )
+            old_root.rename(new_root)
+            moved = True
+    except Exception:
+        if moved and new_root.is_dir() and not old_root.exists():
+            new_root.rename(old_root)
+        raise
     _set_no_store(response)
     return _admin_payload(
         one("SELECT * FROM project_shares WHERE project_id=?", (project_id,))
     )
 
 
-def _public_share(share_id: str, request: Request) -> dict[str, Any]:
+def _public_share(share_id: str) -> dict[str, Any]:
     _sharing_required()
     normalized = _share_id(share_id)
     share = one("SELECT * FROM project_shares WHERE id=?", (normalized,))
     if not share or not share["enabled"] or not share.get("snapshot_version"):
         raise HTTPException(status_code=404, detail="Share unavailable")
-    cookie = request.cookies.get(_cookie_name(normalized), "")
-    try:
-        generation_text, supplied = cookie.split(".", 1)
-        generation = int(generation_text)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=404, detail="Share unavailable") from None
-    expected = _signature("cookie", normalized, generation)
-    if generation != int(share["generation"]) or not secrets.compare_digest(
-        supplied, expected
-    ):
-        raise HTTPException(status_code=404, detail="Share unavailable")
     return share
-
-
-@router.post("/api/public/shares/{share_id}/authorize")
-def authorize_public_share(
-    share_id: str,
-    payload: ShareAuthorization,
-    response: Response,
-) -> dict[str, bool]:
-    _sharing_required()
-    normalized = _share_id(share_id)
-    share = one("SELECT * FROM project_shares WHERE id=?", (normalized,))
-    if (
-        not share
-        or not share["enabled"]
-        or not share.get("snapshot_version")
-        or not secrets.compare_digest(
-            payload.secret,
-            _signature("link", normalized, int(share["generation"])),
-        )
-    ):
-        raise HTTPException(status_code=404, detail="Share unavailable")
-    response.set_cookie(
-        _cookie_name(normalized),
-        _cookie_value(share),
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="strict",
-        max_age=settings.session_hours * 3600,
-        path=f"/api/public/shares/{normalized}",
-    )
-    _set_no_store(response)
-    return {"authorized": True}
 
 
 @router.get("/api/public/shares/{share_id}")
 def public_share_detail(
     share_id: str,
-    request: Request,
     response: Response,
 ) -> dict[str, Any]:
-    share = _public_share(share_id, request)
+    share = _public_share(share_id)
     try:
         snapshot = json.loads(share["snapshot_json"])
     except json.JSONDecodeError as exc:
@@ -474,10 +421,9 @@ def public_share_detail(
 def public_artifact(
     share_id: str,
     relative_path: str,
-    request: Request,
     download: bool = Query(default=False),
 ) -> FileResponse:
-    share = _public_share(share_id, request)
+    share = _public_share(share_id)
     snapshot = json.loads(share["snapshot_json"])
     root = _snapshot_root(share)
     if not artifact_path_allowed_for_root(root, relative_path, snapshot["outputs"]):
@@ -500,9 +446,8 @@ def public_raster_tile(
     z: int,
     x: int,
     y: int,
-    request: Request,
 ) -> FileResponse:
-    share = _public_share(share_id, request)
+    share = _public_share(share_id)
     snapshot = json.loads(share["snapshot_json"])
     if snapshot["outputs"].get(layer, True) is False:
         raise HTTPException(status_code=404, detail="Output is unavailable")
@@ -586,10 +531,9 @@ def _raster_metadata(root: Path, layer: str, outputs: dict[str, bool]) -> dict[s
 def public_raster_metadata(
     share_id: str,
     layer: str,
-    request: Request,
     response: Response,
 ) -> dict[str, Any]:
-    share = _public_share(share_id, request)
+    share = _public_share(share_id)
     snapshot = json.loads(share["snapshot_json"])
     result = _raster_metadata(_snapshot_root(share), layer, snapshot["outputs"])
     _set_no_store(response)
@@ -602,10 +546,9 @@ def public_elevation(
     layer: str,
     x: float,
     y: float,
-    request: Request,
     response: Response,
 ) -> dict[str, Any]:
-    share = _public_share(share_id, request)
+    share = _public_share(share_id)
     snapshot = json.loads(share["snapshot_json"])
     if layer not in {"dsm", "dtm"}:
         raise HTTPException(status_code=422, detail="Layer must be dsm or dtm")

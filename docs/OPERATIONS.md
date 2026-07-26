@@ -114,13 +114,7 @@ the public AGPL repository. The sharing profile does not expose the private
 frontend: Cloudflare can reach only a dedicated public Nginx gateway, and that
 gateway proxies only the anonymous share API.
 
-1. Generate a third independent signing key:
-
-   ```bash
-   openssl rand -hex 32
-   ```
-
-   Put it in `.env` as `MAPPER_SHARE_SIGNING_KEY`. Set:
+1. Enable public sharing in `.env`:
 
    ```dotenv
    MAPPER_SHARING_ENABLED=true
@@ -145,8 +139,8 @@ gateway proxies only the anonymous share API.
    CLOUDFLARE_TUNNEL_TOKEN=paste-the-connector-token-here
    ```
 
-   Do not commit `.env`, the share signing key, generated map links, or the
-   tunnel token. The pinned cloudflared container reads the token from
+   Do not commit `.env`, generated map links, or the tunnel token. The pinned
+   cloudflared container reads the token from
    `TUNNEL_TOKEN`; no Cloudflare credentials file is mounted.
 
 4. Validate and start:

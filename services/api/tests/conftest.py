@@ -14,7 +14,6 @@ os.environ["MAPPER_INTERNAL_TOKEN"] = "test-internal-token"
 os.environ["MAPPER_DISK_RESERVE_BYTES"] = str(1024**3)
 os.environ["MAPPER_SHARING_ENABLED"] = "true"
 os.environ["MAPPER_PUBLIC_BASE_URL"] = "https://dronemaps.ashersuter.com"
-os.environ["MAPPER_SHARE_SIGNING_KEY"] = "test-share-signing-key-that-is-long-enough"
 
 from app.config import settings
 from app.db import init_db, transaction

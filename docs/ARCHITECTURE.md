@@ -67,13 +67,12 @@ artifact, or event records.
 
 ## Public sharing
 
-`project_shares` stores one share ID per map, an HMAC generation, enabled state,
+`project_shares` stores one random UUID bearer ID per map, its enabled state,
 aggregate page-view count, last-viewed time, and the active snapshot version.
-The URL places its HMAC bearer secret in the fragment, so the initial secret is
-not sent in HTTP requests or proxy logs. A successful authorization exchange
-sets a share-specific, path-scoped, HttpOnly cookie. Disabling a link checks the
-database on every request; regeneration increments its generation so both the
-old URL and old scoped cookie immediately fail.
+Anyone with the public URL can read the published snapshot without signing in
+or receiving a browser cookie. Disabling a link checks the database on every
+request. Regeneration replaces the UUID and moves the immutable publication to
+the new share root so the old URL immediately fails.
 
 Publication creates a new immutable hard-link tree from the currently
 allowlisted artifact set and atomically points the share row to it. Reprocessing

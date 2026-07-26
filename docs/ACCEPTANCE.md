@@ -138,9 +138,10 @@ At 1440×900 and 1280×720:
     statistics must fill the summary row. **About & source** must share the
     36px accuracy footer row and link to the deployed AGPL source.
 20. Record the view count, reload once, and confirm it increments and updates
-    Last viewed. Disable the link and confirm both the link and its prior cookie
-    fail generically. Re-enable it, then replace the secret and confirm the old
-    URL fails while the new URL succeeds.
+    Last viewed. Disable the link and confirm it fails generically. Re-enable
+    it, then replace the public link and confirm the old UUID URL fails while
+    the new URL succeeds. Open the new URL in a fresh signed-out browser and
+    confirm it works without any prior share cookie.
 21. Start reprocessing a shared map and confirm the public link retains the
     exact prior published result. Force an incomplete/failed run and confirm no
     technical error is exposed publicly. Complete a later run and confirm the

@@ -17,17 +17,16 @@ export default function PublicApp() {
 
   useEffect(() => {
     let disposed = false;
-    const location = parsePublicShareLocation(window.location.pathname, window.location.hash);
+    const location = parsePublicShareLocation(window.location.pathname);
     if (!location) {
       setState({ kind: "unavailable" });
       return;
     }
+    if (window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     void (async () => {
       try {
-        if (location.secret) {
-          await publicApi.authorize(location.shareId, location.secret);
-          window.history.replaceState(null, "", window.location.pathname);
-        }
         const project = await publicApi.getShare(location.shareId);
         if (!disposed) {
           setState({

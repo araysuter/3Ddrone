@@ -67,7 +67,7 @@ def _completed_map(client, csrf, *, name="Shared map"):
 def _share_parts(payload):
     share = payload["share"]
     parsed = urlsplit(share["url"])
-    return parsed.path.rsplit("/", 1)[-1], parsed.fragment, share
+    return parsed.path.rsplit("/", 1)[-1], share
 
 
 def _without_admin(client):
@@ -81,7 +81,7 @@ def _restore_admin(client, token):
     client.cookies.set("mapper_session", token)
 
 
-def test_share_link_is_sanitized_revocable_and_regenerates(authenticated):
+def test_share_link_is_public_revocable_and_rotates_id(authenticated):
     client, csrf = authenticated
     project_id, _, _ = _completed_map(client, csrf)
 
@@ -90,21 +90,13 @@ def test_share_link_is_sanitized_revocable_and_regenerates(authenticated):
         headers={"X-CSRF-Token": csrf},
     )
     assert created.status_code == 200
-    share_id, secret, share = _share_parts(created.json())
+    share_id, share = _share_parts(created.json())
     assert created.json()["configured"] is True
     assert share["enabled"] is True
-    assert share["url"].startswith(
-        f"https://dronemaps.ashersuter.com/share/{share_id}#"
-    )
+    assert share["url"] == f"https://dronemaps.ashersuter.com/share/{share_id}"
 
     admin_token = _without_admin(client)
     assert client.get("/api/projects").status_code == 401
-    authorization = client.post(
-        f"/api/public/shares/{share_id}/authorize",
-        json={"secret": secret},
-    )
-    assert authorization.status_code == 200
-    assert "no-store" in authorization.headers["cache-control"]
 
     detail = client.get(f"/api/public/shares/{share_id}")
     assert detail.status_code == 200
@@ -162,28 +154,21 @@ def test_share_link_is_sanitized_revocable_and_regenerates(authenticated):
         f"/api/projects/{project_id}/share/regenerate",
         headers={"X-CSRF-Token": csrf},
     )
-    new_share_id, new_secret, new_share = _share_parts(regenerated.json())
-    assert new_share_id == share_id
+    new_share_id, new_share = _share_parts(regenerated.json())
+    assert new_share_id != share_id
     assert new_share["url"] != share["url"]
     assert new_share["view_count"] == 0
     assert new_share["last_viewed_at"] is None
 
     client.cookies.delete("mapper_session")
     assert client.get(f"/api/public/shares/{share_id}").status_code == 404
-    assert (
-        client.post(
-            f"/api/public/shares/{share_id}/authorize",
-            json={"secret": secret},
-        ).status_code
-        == 404
+    assert client.get(f"/api/public/shares/{new_share_id}").status_code == 200
+    artifact = client.get(
+        f"/api/public/shares/{new_share_id}/artifacts/"
+        "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
-    assert (
-        client.post(
-            f"/api/public/shares/{share_id}/authorize",
-            json={"secret": new_secret},
-        ).status_code
-        == 200
-    )
+    assert artifact.status_code == 200
+    assert artifact.content == b"old-orthomosaic"
 
 
 def test_share_keeps_last_publication_until_completed_result_is_published(authenticated):
@@ -193,15 +178,8 @@ def test_share_keeps_last_publication_until_completed_result_is_published(authen
         f"/api/projects/{project_id}/share",
         headers={"X-CSRF-Token": csrf},
     )
-    share_id, secret, _ = _share_parts(created.json())
+    share_id, _ = _share_parts(created.json())
     admin_token = _without_admin(client)
-    assert (
-        client.post(
-            f"/api/public/shares/{share_id}/authorize",
-            json={"secret": secret},
-        ).status_code
-        == 200
-    )
 
     update_project(project_id, status="processing", stage="Reprocessing", progress=40)
     preview.unlink()
@@ -238,7 +216,7 @@ def test_project_folder_rename_updates_published_header(authenticated):
         f"/api/projects/{project_id}/share",
         headers={"X-CSRF-Token": csrf},
     )
-    share_id, secret, _ = _share_parts(created.json())
+    share_id, _ = _share_parts(created.json())
 
     renamed = client.patch(
         f"/api/folders/{folder_id}",
@@ -247,13 +225,6 @@ def test_project_folder_rename_updates_published_header(authenticated):
     )
     assert renamed.status_code == 200
     _without_admin(client)
-    assert (
-        client.post(
-            f"/api/public/shares/{share_id}/authorize",
-            json={"secret": secret},
-        ).status_code
-        == 200
-    )
     assert (
         client.get(f"/api/public/shares/{share_id}").json()["folder_name"]
         == "Renamed client project"
@@ -267,7 +238,7 @@ def test_map_rename_updates_published_header_without_republishing_files(authenti
         f"/api/projects/{project_id}/share",
         headers={"X-CSRF-Token": csrf},
     )
-    share_id, secret, _ = _share_parts(created.json())
+    share_id, _ = _share_parts(created.json())
 
     renamed = client.patch(
         f"/api/projects/{project_id}/name",
@@ -279,13 +250,6 @@ def test_map_rename_updates_published_header_without_republishing_files(authenti
     assert preview.read_bytes() == b"old-orthomosaic"
 
     _without_admin(client)
-    assert (
-        client.post(
-            f"/api/public/shares/{share_id}/authorize",
-            json={"secret": secret},
-        ).status_code
-        == 200
-    )
     public = client.get(f"/api/public/shares/{share_id}")
     assert public.status_code == 200
     assert public.json()["name"] == "Shared map — July 26"

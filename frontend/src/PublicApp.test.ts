@@ -2,34 +2,20 @@ import { describe, expect, it } from "vitest";
 import { parsePublicShareLocation } from "./lib/publicShare";
 
 describe("parsePublicShareLocation", () => {
-  it("accepts only a UUID share path and URL-safe secret fragment", () => {
+  it("accepts a UUID public-share path", () => {
     expect(
-      parsePublicShareLocation(
-        "/share/7ac8f41c-9f08-4f19-9cf6-731764941a03",
-        "#abcdefghijklmnopqrstuvwxyzABCDEFG_123456",
-      ),
+      parsePublicShareLocation("/share/7ac8f41c-9f08-4f19-9cf6-731764941a03"),
     ).toEqual({
       shareId: "7ac8f41c-9f08-4f19-9cf6-731764941a03",
-      secret: "abcdefghijklmnopqrstuvwxyzABCDEFG_123456",
     });
-    expect(parsePublicShareLocation("/", "")).toBeNull();
-    expect(
-      parsePublicShareLocation(
-        "/share/7ac8f41c-9f08-4f19-9cf6-731764941a03",
-        "#not allowed!",
-      ),
-    ).toBeNull();
+    expect(parsePublicShareLocation("/")).toBeNull();
   });
 
-  it("allows a valid path without a fragment for an existing scoped cookie", () => {
+  it("allows a trailing slash", () => {
     expect(
-      parsePublicShareLocation(
-        "/share/7ac8f41c-9f08-4f19-9cf6-731764941a03/",
-        "",
-      ),
+      parsePublicShareLocation("/share/7ac8f41c-9f08-4f19-9cf6-731764941a03/"),
     ).toEqual({
       shareId: "7ac8f41c-9f08-4f19-9cf6-731764941a03",
-      secret: "",
     });
   });
 });

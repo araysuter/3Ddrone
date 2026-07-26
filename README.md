@@ -149,7 +149,9 @@ project changes only SQLite metadata; deleting a project moves its maps back to
 No Project and never removes source imagery or artifacts.
 
 Completed and partial maps can be published from the rightmost **Share** button
-in the results toolbar. Each map has one stable, revocable secret link. The
+in the results toolbar. Each map has one stable, revocable public link. Anyone
+with that link can open the published map without signing in or receiving a
+browser cookie. The
 public page shows the assigned Project above the map name and exposes only the
 published viewers and downloads—never setup, uploads, processing, reprocessing,
 map deletion, or the local operator API. A completed replacement is published

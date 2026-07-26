@@ -177,11 +177,6 @@ export const api = {
 };
 
 export const publicApi = {
-  authorize: (shareId: string, secret: string) =>
-    request<{ authorized: boolean }>(`/api/public/shares/${shareId}/authorize`, {
-      method: "POST",
-      body: JSON.stringify({ secret }),
-    }),
   getShare: (shareId: string) =>
     request<PublicShareProject>(`/api/public/shares/${shareId}`),
   elevation: (shareId: string, layer: "dsm" | "dtm", x: number, y: number) =>

@@ -32,7 +32,6 @@ class Settings:
     public_base_url: str = os.getenv(
         "MAPPER_PUBLIC_BASE_URL", "https://dronemaps.ashersuter.com"
     ).rstrip("/")
-    share_signing_key: str = os.getenv("MAPPER_SHARE_SIGNING_KEY", "")
     cookie_secure: bool = _env_bool("MAPPER_COOKIE_SECURE", True)
     demo_mode: bool = _env_bool("MAPPER_DEMO_MODE", False)
     session_hours: int = _env_int("MAPPER_SESSION_HOURS", 24)
@@ -85,17 +84,6 @@ class Settings:
             ):
                 raise RuntimeError(
                     "MAPPER_PUBLIC_BASE_URL must be an HTTPS origin without a path, query, or fragment"
-                )
-            if (
-                len(self.share_signing_key) < 32
-                or self.share_signing_key.startswith("replace-with-")
-            ):
-                raise RuntimeError(
-                    "MAPPER_SHARE_SIGNING_KEY must be a random 32+ character secret"
-                )
-            if self.share_signing_key in {self.nodeodm_token, self.internal_token}:
-                raise RuntimeError(
-                    "MAPPER_SHARE_SIGNING_KEY must differ from the service tokens"
                 )
             if not self.demo_mode and not self.cookie_secure:
                 raise RuntimeError(

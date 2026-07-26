@@ -69,7 +69,7 @@ export function ShareDialog({
   function regenerate() {
     if (
       !window.confirm(
-        "Generate a new secret link? The current link will immediately stop working and view statistics will reset.",
+        "Generate a new public link? The current link will immediately stop working and view statistics will reset.",
       )
     ) {
       return;
@@ -99,7 +99,7 @@ export function ShareDialog({
         <div className="share-warning">
           <AlertTriangle size={17} />
           <div>
-            <strong>Anyone with this secret link can view and download the published map.</strong>
+            <strong>Anyone with this public link can view and download the published map.</strong>
             <span>
               This includes all available outputs and files. They cannot create maps, start scans,
               reprocess, or access the private operator interface.
@@ -124,7 +124,7 @@ export function ShareDialog({
         {share && (
           <>
             <div className="share-link-block">
-              <label htmlFor="share-url">{share.enabled ? "ACTIVE SECRET LINK" : "DISABLED LINK"}</label>
+              <label htmlFor="share-url">{share.enabled ? "ACTIVE PUBLIC LINK" : "DISABLED LINK"}</label>
               <div>
                 <input id="share-url" readOnly value={share.url} />
                 <button className="button secondary" onClick={() => void copyLink()}>
@@ -163,7 +163,7 @@ export function ShareDialog({
             )}
             <div className="share-controls">
               <button className="button secondary" disabled={busy} onClick={regenerate}>
-                <RefreshCw size={14} /> Replace secret link
+                <RefreshCw size={14} /> Replace public link
               </button>
               {share.enabled && (
                 <button className="button secondary danger-text" disabled={busy} onClick={disable}>
