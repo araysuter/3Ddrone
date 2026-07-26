@@ -258,3 +258,39 @@ def test_project_folder_rename_updates_published_header(authenticated):
         client.get(f"/api/public/shares/{share_id}").json()["folder_name"]
         == "Renamed client project"
     )
+
+
+def test_map_rename_updates_published_header_without_republishing_files(authenticated):
+    client, csrf = authenticated
+    project_id, _, preview = _completed_map(client, csrf)
+    created = client.post(
+        f"/api/projects/{project_id}/share",
+        headers={"X-CSRF-Token": csrf},
+    )
+    share_id, secret, _ = _share_parts(created.json())
+
+    renamed = client.patch(
+        f"/api/projects/{project_id}/name",
+        json={"name": "Shared map — July 26"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["status"] == "completed"
+    assert preview.read_bytes() == b"old-orthomosaic"
+
+    _without_admin(client)
+    assert (
+        client.post(
+            f"/api/public/shares/{share_id}/authorize",
+            json={"secret": secret},
+        ).status_code
+        == 200
+    )
+    public = client.get(f"/api/public/shares/{share_id}")
+    assert public.status_code == 200
+    assert public.json()["name"] == "Shared map — July 26"
+    artifact = client.get(
+        f"/api/public/shares/{share_id}/artifacts/"
+        "artifacts/odm_orthophoto/odm_orthophoto.png"
+    )
+    assert artifact.content == b"old-orthomosaic"

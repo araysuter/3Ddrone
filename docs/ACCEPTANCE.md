@@ -107,33 +107,36 @@ At 1440×900 and 1280×720:
     NodeODM's effective options include `crop=0` unless Advanced overrides it,
     the new output selection is honored, and the prior local artifacts remain
     available until the replacement archive passes validation.
-14. Create an **Arbordale** project, drag a completed map into it, collapse and
+14. Open any map's actions menu, choose **Rename map**, and save a new name.
+    Confirm the sidebar, workspace title, and existing public-share header
+    update while status, project assignment, uploads, and artifacts are unchanged.
+15. Create an **Arbordale** project, drag a completed map into it, collapse and
     expand the project, and confirm the workspace eyebrow changes from
     **NO PROJECT** to **ARBORDALE**.
-15. Open **New map** while the Arbordale map is selected and confirm the
+16. Open **New map** while the Arbordale map is selected and confirm the
     Project field defaults to Arbordale. Move the new map back to No Project and
     verify processing state is unchanged.
-16. Rename Arbordale, then delete the nonempty project. Confirm its maps move
+17. Rename Arbordale, then delete the nonempty project. Confirm its maps move
     to No Project and their retained source and artifact files remain intact.
     Repeat the sidebar checks at 1440×900 and 1280×720 with no console errors.
-17. Enable the `sharing` profile, open Arbordale's completed map, and confirm
+18. Enable the `sharing` profile, open Arbordale's completed map, and confirm
     **Share** is the rightmost results-toolbar action. Create a link and open it
     in a signed-out desktop browser and a phone-size viewport. Confirm the
     public header shows **ARBORDALE** above the map name, the first available
     output opens, and Files downloads work.
-18. Confirm the public view has no processing-complete block, three-dot menu,
+19. Confirm the public view has no processing-complete block, three-dot menu,
     upload, create, run, retry, reprocess, or delete control. Its four result
     statistics must fill the summary row. **About & source** must share the
     36px accuracy footer row and link to the deployed AGPL source.
-19. Record the view count, reload once, and confirm it increments and updates
+20. Record the view count, reload once, and confirm it increments and updates
     Last viewed. Disable the link and confirm both the link and its prior cookie
     fail generically. Re-enable it, then replace the secret and confirm the old
     URL fails while the new URL succeeds.
-20. Start reprocessing a shared map and confirm the public link retains the
+21. Start reprocessing a shared map and confirm the public link retains the
     exact prior published result. Force an incomplete/failed run and confirm no
     technical error is exposed publicly. Complete a later run and confirm the
     link switches to the new snapshot.
-21. From the public hostname, verify `/api/projects`, `/api/setup`,
+22. From the public hostname, verify `/api/projects`, `/api/setup`,
     `/api/system`, and non-GET public methods return 404/403 while the private
     Tailscale operator remains functional. Repeat with browser console and
     network panels open and confirm share HTML/API/artifacts are `no-store`.

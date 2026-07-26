@@ -159,6 +159,57 @@ def test_map_creation_assignment_and_active_reassignment(authenticated):
     assert malformed_move.status_code == 422
 
 
+def test_map_rename_is_metadata_only_and_csrf_protected(authenticated):
+    client, csrf = authenticated
+    folder = create_folder(client, csrf)
+    mapping = create_map(client, csrf, name="Arbordale ST", folder_id=folder["id"])
+    source = settings.data_root / "source" / mapping["id"] / "retained.txt"
+    artifact = settings.data_root / "metadata" / "projects" / mapping["id"] / "artifact.txt"
+    source.write_text("source")
+    artifact.write_text("artifact")
+    with transaction() as db:
+        db.execute(
+            "UPDATE projects SET status='processing',stage='Feature matching',progress=31 WHERE id=?",
+            (mapping["id"],),
+        )
+
+    forbidden = client.patch(
+        f"/api/projects/{mapping['id']}/name",
+        json={"name": "Arbordale ST — July 26"},
+    )
+    assert forbidden.status_code == 403
+
+    renamed = client.patch(
+        f"/api/projects/{mapping['id']}/name",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": " Arbordale ST — July 26 "},
+    )
+    assert renamed.status_code == 200
+    renamed_map = renamed.json()
+    assert renamed_map["name"] == "Arbordale ST — July 26"
+    assert renamed_map["folder_id"] == folder["id"]
+    assert renamed_map["status"] == "processing"
+    assert renamed_map["stage"] == "Feature matching"
+    assert renamed_map["progress"] == 31
+    assert source.read_text() == "source"
+    assert artifact.read_text() == "artifact"
+
+    bad_name = client.patch(
+        f"/api/projects/{mapping['id']}/name",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "bad\nname"},
+    )
+    assert bad_name.status_code == 422
+    assert client.get(f"/api/projects/{mapping['id']}").json()["name"] == "Arbordale ST — July 26"
+
+    missing = client.patch(
+        f"/api/projects/{uuid.uuid4()}/name",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "Missing map"},
+    )
+    assert missing.status_code == 404
+
+
 def test_deleting_folder_unassigns_maps_without_deleting_data(authenticated):
     client, csrf = authenticated
     folder = create_folder(client, csrf)

@@ -230,6 +230,23 @@ def refresh_share_folder_labels(project_ids: list[str]) -> None:
             continue
 
 
+def refresh_share_map_names(project_ids: list[str]) -> None:
+    for project_id in project_ids:
+        share = one("SELECT * FROM project_shares WHERE project_id=?", (project_id,))
+        if not share or not share.get("snapshot_version"):
+            continue
+        try:
+            snapshot = json.loads(share["snapshot_json"] or "{}")
+            snapshot["name"] = _load_project(project_id)["name"]
+            with transaction() as db:
+                db.execute(
+                    "UPDATE project_shares SET snapshot_json=?,updated_at=? WHERE id=?",
+                    (json.dumps(snapshot), utcnow(), share["id"]),
+                )
+        except (json.JSONDecodeError, HTTPException):
+            continue
+
+
 def remove_project_share(project_id: str) -> None:
     share = one("SELECT id FROM project_shares WHERE project_id=?", (project_id,))
     if share:

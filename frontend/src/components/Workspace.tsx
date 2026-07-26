@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Box,
   MoreVertical,
+  Pencil,
   Play,
   RotateCcw,
   Settings2,
@@ -24,6 +25,7 @@ interface Props {
   folderName?: string;
   onChanged: () => Promise<void>;
   onResumeUploads: (project: Project, files: File[]) => Promise<void>;
+  onRename: (project: Project) => void;
   onReprocess: (project: Project) => void;
 }
 
@@ -35,6 +37,7 @@ export function Workspace({
   folderName,
   onChanged,
   onResumeUploads,
+  onRename,
   onReprocess,
 }: Props) {
   const [menu, setMenu] = useState(false);
@@ -167,6 +170,14 @@ export function Workspace({
             </button>
             {menu && (
               <div className="action-menu">
+                <button
+                  onClick={() => {
+                    setMenu(false);
+                    onRename(currentProject);
+                  }}
+                >
+                  <Pencil size={14} /> Rename map
+                </button>
                 {canReprocess && (
                   <button
                     onClick={() => {

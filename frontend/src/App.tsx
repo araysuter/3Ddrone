@@ -5,6 +5,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { AuthScreen } from "./components/AuthScreen";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { ProjectFolderDialog } from "./components/ProjectFolderDialog";
+import { RenameMapDialog } from "./components/RenameMapDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Workspace } from "./components/Workspace";
 
@@ -17,6 +18,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [newMapOpen, setNewMapOpen] = useState(false);
   const [reprocessProjectId, setReprocessProjectId] = useState<string>();
+  const [renameMapProject, setRenameMapProject] = useState<Project>();
   const [folderDialog, setFolderDialog] = useState<{
     mode: "create" | "rename";
     folder?: MapFolder;
@@ -24,6 +26,7 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
+  const [renamingMap, setRenamingMap] = useState(false);
   const [savingFolder, setSavingFolder] = useState(false);
   const [logs, setLogs] = useState<Record<string, string[]>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
@@ -271,6 +274,20 @@ export default function App() {
     }
   }
 
+  async function saveMapName(name: string) {
+    if (!renameMapProject) return;
+    setRenamingMap(true);
+    try {
+      const updated = await api.renameProject(renameMapProject.id, name);
+      setProjects((current) =>
+        current.map((project) => (project.id === updated.id ? { ...project, ...updated } : project)),
+      );
+      setRenameMapProject(undefined);
+    } finally {
+      setRenamingMap(false);
+    }
+  }
+
   async function deleteFolder(folder: MapFolder) {
     const count = projects.filter((project) => project.folder_id === folder.id).length;
     if (
@@ -341,6 +358,7 @@ export default function App() {
         folderName={selected?.folder_id ? folderNames.get(selected.folder_id) : undefined}
         onChanged={refresh}
         onResumeUploads={resumeUploads}
+        onRename={setRenameMapProject}
         onReprocess={(project) => setReprocessProjectId(project.id)}
       />
       {newMapOpen && (
@@ -372,6 +390,15 @@ export default function App() {
           busy={savingFolder}
           onClose={() => !savingFolder && setFolderDialog(undefined)}
           onSubmit={saveFolder}
+        />
+      )}
+      {renameMapProject && (
+        <RenameMapDialog
+          key={renameMapProject.id}
+          project={renameMapProject}
+          busy={renamingMap}
+          onClose={() => !renamingMap && setRenameMapProject(undefined)}
+          onSubmit={saveMapName}
         />
       )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />

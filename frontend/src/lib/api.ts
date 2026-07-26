@@ -96,6 +96,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ folder_id: folderId }),
     }),
+  renameProject: (id: string, name: string) =>
+    request<Project>(`/api/projects/${id}/name`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
   createProject: (payload: {
     name: string;
     preset: string;

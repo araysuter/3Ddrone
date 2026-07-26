@@ -132,6 +132,10 @@ FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correct
 
 Consumer drone GPS is labeled “best effort,” not survey grade. Measurements use the project coordinate reference system when georeferenced products are available. Supplying GCPs changes the label to “GCP-assisted,” but the quality report and control residuals remain authoritative.
 
+Use **Map actions → Rename map** to change a map's display name without
+reprocessing it or moving retained files. Existing public share headers are
+updated to the new name while their published result files remain unchanged.
+
 Completed, partial, failed, and canceled maps with retained imagery can be
 queued again from **Map actions → Reprocess with different settings**. The
 dialog reuses the original uploads and lets the operator change the preset,

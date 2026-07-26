@@ -51,6 +51,7 @@ from .security import (
 )
 from .sharing import (
     refresh_share_folder_labels,
+    refresh_share_map_names,
     remove_project_share,
     router as sharing_router,
 )
@@ -132,6 +133,20 @@ class FolderPayload(BaseModel):
             raise ValueError("Project name cannot be blank")
         if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
             raise ValueError("Project name cannot contain control characters")
+        return normalized
+
+
+class MapNamePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Map name cannot be blank")
+        if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
+            raise ValueError("Map name cannot contain control characters")
         return normalized
 
 
@@ -515,6 +530,23 @@ def create_project(payload: ProjectCreate, _: dict = Depends(require_csrf)) -> d
 
 @app.get("/api/projects/{project_id}")
 def project_detail(project_id: str, _: dict = Depends(require_session)) -> dict[str, Any]:
+    return get_project(project_id)
+
+
+@app.patch("/api/projects/{project_id}/name")
+def rename_project(
+    project_id: str,
+    payload: MapNamePayload,
+    _: dict = Depends(require_csrf),
+) -> dict[str, Any]:
+    with transaction() as db:
+        cursor = db.execute(
+            "UPDATE projects SET name=?,updated_at=? WHERE id=?",
+            (payload.name, utcnow(), project_id),
+        )
+        if cursor.rowcount != 1:
+            raise HTTPException(status_code=404, detail="Map not found")
+    refresh_share_map_names([project_id])
     return get_project(project_id)
 
 
