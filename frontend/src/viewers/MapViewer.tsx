@@ -5,10 +5,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type Feature from "ol/Feature.js";
+import type ImageTile from "ol/ImageTile.js";
 import Map from "ol/Map.js";
 import View from "ol/View.js";
+import Attribution from "ol/control/Attribution.js";
 import TileLayer from "ol/layer/Tile.js";
 import VectorLayer from "ol/layer/Vector.js";
+import OSM from "ol/source/OSM.js";
 import XYZ from "ol/source/XYZ.js";
 import VectorSource from "ol/source/Vector.js";
 import Draw from "ol/interaction/Draw.js";
@@ -16,7 +19,14 @@ import { get as getProjection, transform } from "ol/proj.js";
 import { register } from "ol/proj/proj4.js";
 import type { Coordinate } from "ol/coordinate.js";
 import type Geometry from "ol/geom/Geometry.js";
-import { Crosshair, Eraser, MousePointer2, Pentagon, Ruler } from "lucide-react";
+import {
+  Crosshair,
+  Eraser,
+  Layers,
+  MousePointer2,
+  Pentagon,
+  Ruler,
+} from "lucide-react";
 import proj4 from "proj4";
 import { resourceApi } from "../lib/api";
 import {
@@ -38,11 +48,15 @@ interface Props {
 export function MapViewer({ resourceBase, layer }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
+  const basemapLayerRef = useRef<TileLayer<OSM> | null>(null);
   const sourceRef = useRef(new VectorSource());
   const drawRef = useRef<Draw | null>(null);
   const activeSketchRef = useRef<Feature<Geometry> | null>(null);
   const [tool, setTool] = useState<"inspect" | "distance" | "area">("inspect");
   const toolRef = useRef(tool);
+  const [basemapEnabled, setBasemapEnabled] = useState(false);
+  const [basemapError, setBasemapError] = useState(false);
+  const [viewerReady, setViewerReady] = useState(false);
   const [units, setUnits] = useState<MeasurementUnits>(() => {
     try {
       return readMeasurementUnits(window.localStorage);
@@ -79,7 +93,11 @@ export function MapViewer({ resourceBase, layer }: Props) {
     let disposed = false;
     let map: Map | null = null;
     sourceRef.current.clear();
+    basemapLayerRef.current = null;
     setHasMeasurements(false);
+    setBasemapEnabled(false);
+    setBasemapError(false);
+    setViewerReady(false);
     setError("");
     setReadout("Loading raster metadata…");
     void resourceApi
@@ -97,6 +115,26 @@ export function MapViewer({ resourceBase, layer }: Props) {
         const projectProjection = getProjection(projectProjectionRef.current);
         metersPerUnitRef.current = projectProjection?.getMetersPerUnit() ?? 1;
         crsLabelRef.current = metadata.crs;
+        const basemapSource = new OSM({
+          crossOrigin: "anonymous",
+          tileLoadFunction: (tile, src) => {
+            const image = (tile as ImageTile).getImage() as HTMLImageElement;
+            image.referrerPolicy = "origin";
+            image.src = src;
+          },
+          wrapX: false,
+        });
+        basemapSource.on("tileloadend", () => {
+          if (!disposed) setBasemapError(false);
+        });
+        basemapSource.on("tileloaderror", () => {
+          if (!disposed) setBasemapError(true);
+        });
+        const basemap = new TileLayer({
+          source: basemapSource,
+          visible: false,
+          preload: 0,
+        });
         const raster = new TileLayer({
           source: new XYZ({
             url: `${resourceBase}/tiles/${layer}/{z}/{x}/{-y}.png`,
@@ -117,14 +155,14 @@ export function MapViewer({ resourceBase, layer }: Props) {
         });
         map = new Map({
           target: target.current,
-          layers: [raster, measurements],
+          layers: [basemap, raster, measurements],
           view: new View({
             center: [0, 0],
             zoom: metadata.min_zoom,
             minZoom: Math.max(0, metadata.min_zoom - 2),
             maxZoom: metadata.max_zoom + 2,
           }),
-          controls: [],
+          controls: [new Attribution({ collapsible: false })],
         });
         map.getView().fit(metadata.bounds_3857, {
           padding: [28, 28, 28, 28],
@@ -152,12 +190,14 @@ export function MapViewer({ resourceBase, layer }: Props) {
               setReadout(reason instanceof Error ? reason.message : "Elevation sample failed");
             });
         });
+        basemapLayerRef.current = basemap;
         mapRef.current = map;
         const center = map.getView().getCenter();
         setReadout(
           center ? formatProjectCoordinate(center) : `Raster ready · ${metadata.crs}`,
         );
         setMapReady((value) => value + 1);
+        setViewerReady(true);
       })
       .catch((reason: unknown) => {
         if (!disposed) {
@@ -182,6 +222,7 @@ export function MapViewer({ resourceBase, layer }: Props) {
         map.dispose();
       }
       mapRef.current = null;
+      basemapLayerRef.current = null;
     };
   }, [resourceBase, layer]);
 
@@ -259,6 +300,21 @@ export function MapViewer({ resourceBase, layer }: Props) {
     mapRef.current?.render();
   }
 
+  function handleBasemapToggle() {
+    const nextEnabled = !basemapEnabled;
+    basemapLayerRef.current?.setVisible(nextEnabled);
+    setBasemapEnabled(nextEnabled);
+    setBasemapError(false);
+  }
+
+  const mapStatus = error
+    ? error
+    : basemapEnabled
+      ? basemapError
+        ? "Basemap unavailable · Local tiles remain"
+        : "OpenStreetMap basemap on"
+      : "Local ODM tiles · Basemap off";
+
   return (
     <div className="map-viewer">
       <div className="viewer-toolbar">
@@ -292,6 +348,20 @@ export function MapViewer({ resourceBase, layer }: Props) {
         >
           <Eraser size={14} /> Clear
         </button>
+        <button
+          type="button"
+          className={basemapEnabled ? "active" : ""}
+          aria-pressed={basemapEnabled}
+          disabled={!viewerReady}
+          title={
+            basemapEnabled
+              ? "Hide the OpenStreetMap basemap"
+              : "Show the OpenStreetMap basemap (uses internet)"
+          }
+          onClick={handleBasemapToggle}
+        >
+          <Layers size={14} /> Basemap
+        </button>
         <div className="viewer-unit-toggle" role="group" aria-label="Measurement units">
           <button
             type="button"
@@ -322,9 +392,7 @@ export function MapViewer({ resourceBase, layer }: Props) {
         onPointerDown={(event) => event.currentTarget.focus({ preventScroll: true })}
         onKeyDown={handleMapKeyDown}
       />
-      <div className="map-empty-note">
-        {error || "Local ODM TMS tiles · No external basemap required"}
-      </div>
+      <div className="map-empty-note">{mapStatus}</div>
     </div>
   );
 }

@@ -174,6 +174,23 @@ At 1440×900 and 1280×720:
     `/api/public/shares/{uuid}` return 404. Try one Project's item UUID beneath
     another Project's share UUID and confirm its metadata and artifacts return
     the generic unavailable response.
+29. Open a fresh private orthomosaic with the network panel recording. Confirm
+    **Basemap** is not pressed, the local-only dark background remains, OSM
+    attribution is absent, and no request reaches `tile.openstreetmap.org`.
+30. Enable **Basemap** and confirm OpenStreetMap renders beneath the transparent
+    ODM boundary, the button reports its pressed state, visible attribution
+    links to the OSM copyright page, and tile requests send only the mapper
+    origin as their referrer. Disable it and confirm the dark background and
+    attribution state return without changing the viewport or measurements.
+31. Repeat the default-off and toggle checks in DSM, DTM, an individual public
+    map share, and a map inside a public Project. Switching maps or raster tabs
+    must reset the control off and must not carry the choice through browser
+    storage.
+32. Block the OSM tile hostname and confirm the viewer reports **Basemap
+    unavailable · Local tiles remain** while local raster interaction and
+    measurement tools continue working. At 1440×900, 1280×720, and 390×760,
+    confirm the toolbar remains usable and horizontally scrollable, and the
+    attribution never overlaps the status note.
 
 ## Stop conditions
 

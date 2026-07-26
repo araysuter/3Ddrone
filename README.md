@@ -132,6 +132,13 @@ FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correct
 
 Consumer drone GPS is labeled “best effort,” not survey grade. Measurements use the project coordinate reference system when georeferenced products are available. Supplying GCPs changes the label to “GCP-assisted,” but the quality report and control residuals remain authoritative.
 
+Every orthomosaic, DSM, and DTM viewer includes an optional **Basemap**
+button. It starts off whenever a map or raster view opens and does not contact
+an external service until selected. When enabled, OpenStreetMap streets render
+beneath the local ODM tiles with visible source attribution; turning it off
+returns to the local-only dark background. The same control is available in
+private and public-share views.
+
 Use **Map actions → Rename map** to change a map's display name without
 reprocessing it or moving retained files. Existing public share headers are
 updated to the new name while their published result files remain unchanged.

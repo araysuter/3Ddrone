@@ -1270,8 +1270,44 @@ button {
   font: 500 8px/1 var(--mono);
 }
 
+.map-viewer .ol-attribution,
+.map-viewer .ol-attribution.ol-uncollapsible {
+  z-index: 2;
+  right: 12px;
+  bottom: 44px;
+  max-width: calc(100% - 24px);
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: rgb(12 19 25 / 88%);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
+}
+
+.map-viewer .ol-attribution ul {
+  padding: 0;
+  color: #71808c;
+  text-shadow: none;
+  font: 500 8px/1 var(--mono);
+}
+
+.map-viewer .ol-attribution a {
+  color: #8fb6d3;
+}
+
+.map-viewer .ol-attribution a:hover {
+  color: #c0def3;
+  text-decoration: underline;
+}
+
+.map-viewer .ol-attribution a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--blue-light);
+  outline-offset: 2px;
+}
+
 .map-empty-note {
   position: absolute;
+  z-index: 2;
   right: 12px;
   bottom: 12px;
   padding: 6px 8px;
@@ -2580,6 +2616,13 @@ fieldset legend {
 
   .map-empty-note {
     max-width: calc(100% - 24px);
+  }
+
+  .map-viewer .ol-attribution,
+  .map-viewer .ol-attribution.ol-uncollapsible {
+    right: 8px;
+    bottom: 42px;
+    max-width: calc(100% - 16px);
   }
 
   .share-modal {

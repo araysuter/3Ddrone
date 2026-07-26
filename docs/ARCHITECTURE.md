@@ -22,6 +22,14 @@ private maps, individual public maps, and maps nested inside public Projects
 share one renderer without deriving access scope from an internal map ID.
 Inspect, Distance, Area, measurement units, labels, Escape behavior, and Clear
 remain one shared implementation across private and recipient-facing views.
+The shared raster viewer also owns one optional OpenStreetMap layer beneath the
+ODM raster. It is constructed hidden and resets off for every map or raster
+view, so no third-party tile request occurs without a deliberate Basemap
+button press. Private and public Nginx policies allow only the OSM tile
+hostname for external images; each tile request sends only the page origin as
+its referrer while the app's global `no-referrer` policy remains unchanged.
+OpenLayers displays the source attribution only while the external layer is
+visible.
 
 The API owns processing-map state. The legacy `projects` table and
 `/api/projects` routes continue to represent individual maps for compatibility;
@@ -200,7 +208,8 @@ server-side allowlist. Artifact discovery and viewer routes apply the same
 selection again, so stale files from an earlier run cannot expose a disabled
 product.
 
-- Orthomosaic/DSM/DTM: OpenLayers and local static tiles.
+- Orthomosaic/DSM/DTM: OpenLayers and local static tiles, with an optional
+  off-by-default OpenStreetMap layer beneath them.
 - Point cloud: generated OGC 3D Tiles when present; otherwise a background
   Rust/WASM worker decodes ODM's LAS/LAZ 1.4 output without blocking the UI.
 - Textured mesh: Three.js loads ODM's authoritative OBJ, MTL, and JPEG textures,
