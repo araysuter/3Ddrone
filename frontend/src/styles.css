@@ -1204,6 +1204,21 @@ button {
   background: #16304a;
 }
 
+.viewer-toolbar .viewer-clear-button:not(:disabled) {
+  color: #aebbc4;
+}
+
+.viewer-toolbar .viewer-clear-button:not(:disabled):hover {
+  color: #dce8ef;
+  background: #15232d;
+}
+
+.viewer-toolbar button:disabled {
+  color: #48545d;
+  cursor: default;
+  opacity: 0.58;
+}
+
 .viewer-unit-toggle {
   display: flex;
   height: 33px;

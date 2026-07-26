@@ -17,7 +17,7 @@ import { register } from "ol/proj/proj4.js";
 import type { Coordinate } from "ol/coordinate.js";
 import type Geometry from "ol/geom/Geometry.js";
 import LineString from "ol/geom/LineString.js";
-import { Crosshair, MousePointer2, Pentagon, Ruler } from "lucide-react";
+import { Crosshair, Eraser, MousePointer2, Pentagon, Ruler } from "lucide-react";
 import proj4 from "proj4";
 import { api, publicApi } from "../lib/api";
 import {
@@ -58,6 +58,7 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
   const [mapReady, setMapReady] = useState(0);
   const [readout, setReadout] = useState("Loading raster metadata…");
   const [error, setError] = useState("");
+  const [hasMeasurements, setHasMeasurements] = useState(false);
 
   useEffect(() => {
     toolRef.current = tool;
@@ -79,6 +80,7 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
     let disposed = false;
     let map: Map | null = null;
     sourceRef.current.clear();
+    setHasMeasurements(false);
     setError("");
     setReadout("Loading raster metadata…");
     const dataApi = publicShare ? publicApi : api;
@@ -216,17 +218,21 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
     draw.getOverlay().setDeclutter(MEASUREMENT_DECLUTTER_GROUP);
     draw.on("drawstart", (event) => {
       activeSketchRef.current = event.feature;
+      setHasMeasurements(true);
     });
     draw.on("drawend", (event) => {
       activeSketchRef.current = null;
+      setHasMeasurements(true);
       event.feature.changed();
     });
     draw.on("drawabort", () => {
       activeSketchRef.current = null;
+      setHasMeasurements(sourceRef.current.getFeatures().length > 0);
     });
     drawRef.current = draw;
     map.addInteraction(draw);
     return () => {
+      draw.abortDrawing();
       map.removeInteraction(draw);
       if (drawRef.current === draw) drawRef.current = null;
       activeSketchRef.current = null;
@@ -247,6 +253,14 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
     }
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  function handleClearMeasurements() {
+    drawRef.current?.abortDrawing();
+    activeSketchRef.current = null;
+    sourceRef.current.clear();
+    setHasMeasurements(false);
+    mapRef.current?.render();
   }
 
   return (
@@ -272,6 +286,15 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
           onClick={() => setTool("area")}
         >
           <Pentagon size={14} /> Area
+        </button>
+        <button
+          type="button"
+          className="viewer-clear-button"
+          disabled={!hasMeasurements}
+          title="Clear all measurements"
+          onClick={handleClearMeasurements}
+        >
+          <Eraser size={14} /> Clear
         </button>
         <div className="viewer-unit-toggle" role="group" aria-label="Measurement units">
           <button

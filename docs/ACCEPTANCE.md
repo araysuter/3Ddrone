@@ -93,7 +93,9 @@ At 1440×900 and 1280×720:
    default, the `ft`/`m` choice persists, distance totals and area side/center
    labels update live, Escape finishes a valid distance polyline, Escape
    cancels a one-point attempt without leaving Distance mode, and labels remain
-   fixed-size and decluttered when zoomed out.
+   fixed-size and decluttered when zoomed out. Confirm **Clear** removes every
+   completed distance and area measurement plus any active sketch without
+   leaving the selected measurement mode.
 8. Force a splat failure and confirm ODM results remain available with a separate retry.
 9. Restart each container during its owned stage and verify reconciliation.
 10. Open the Advanced drawer and verify only the server allowlist appears;

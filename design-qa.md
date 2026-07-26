@@ -14,11 +14,14 @@
   - `/tmp/3ddrone-measurement-area-far-zoom.png` (`1440 × 900`).
   - `/tmp/3ddrone-measurement-public.png` (`1440 × 900`).
   - `/tmp/3ddrone-measurement-public-mobile.png` (`390 × 760`).
+  - `/tmp/3ddrone-clear-before.png` (`1280 × 720`).
+  - `/tmp/3ddrone-clear-after.png` (`1280 × 720`).
+  - `/tmp/3ddrone-clear-mobile.png` (`390 × 760`).
 - Comparison artifacts:
   - `/tmp/3ddrone-distance-focused-comparison.png`.
   - `/tmp/3ddrone-full-view-comparison.jpg`.
-- Browser: Codex in-app browser, CSS viewport `1440 × 900` and `390 × 760`,
-  device scale factor `1`.
+- Browser: Codex in-app browser, CSS viewport `1440 × 900`, `1280 × 720`,
+  and `390 × 760`, device scale factor `1`.
 - Focused comparison normalization: the implementation label region was cropped
   and resized to the source tag's `378 × 218` pixel dimensions. The contextual
   full-view reference was proportionally scaled only for side-by-side review;
@@ -30,7 +33,8 @@
 - Authenticated orthomosaic: live distance preview, three-point polyline,
   Escape completion, one-point Escape cancellation, retained Distance mode,
   imperial/metric conversion, preference after reload, live polygon labels,
-  snapped polygon completion, and far-zoom rendering.
+  snapped polygon completion, far-zoom rendering, and clearing all completed
+  measurements plus an active sketch without leaving the selected tool.
 - Public share: authorization, imperial default, unit toggle, completed
   distance label, coordinate toolbar, and the same measurement controls.
 - Responsive public share at `390 × 760`: toolbar remains horizontally
@@ -84,6 +88,7 @@
 - [x] Coordinate toolbar remains active in every measurement mode.
 - [x] Unit preference defaults to imperial, persists, and works in shared views.
 - [x] Escape finishes or cancels Distance according to placed-point count.
+- [x] Clear removes all completed measurements and the active sketch.
 - [x] Desktop, far-zoom, public-share, and mobile states pass rendered QA.
 
 final result: passed
