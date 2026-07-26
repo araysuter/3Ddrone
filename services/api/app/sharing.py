@@ -64,7 +64,7 @@ def _snapshot_root(share: dict[str, Any]) -> Path:
 
 
 def _share_url(share: dict[str, Any]) -> str:
-    return f"{settings.public_base_url}/share/{share['id']}"
+    return f"{settings.public_base_url}/share/maps/{share['id']}"
 
 
 def _set_no_store(response: Response) -> None:
@@ -391,7 +391,7 @@ def _public_share(share_id: str) -> dict[str, Any]:
     return share
 
 
-@router.get("/api/public/shares/{share_id}")
+@router.get("/api/public/map-shares/{share_id}")
 def public_share_detail(
     share_id: str,
     response: Response,
@@ -417,7 +417,7 @@ def public_share_detail(
     return snapshot
 
 
-@router.get("/api/public/shares/{share_id}/artifacts/{relative_path:path}")
+@router.get("/api/public/map-shares/{share_id}/artifacts/{relative_path:path}")
 def public_artifact(
     share_id: str,
     relative_path: str,
@@ -439,7 +439,7 @@ def public_artifact(
     )
 
 
-@router.get("/api/public/shares/{share_id}/tiles/{layer}/{z}/{x}/{y}.png")
+@router.get("/api/public/map-shares/{share_id}/tiles/{layer}/{z}/{x}/{y}.png")
 def public_raster_tile(
     share_id: str,
     layer: str,
@@ -527,7 +527,7 @@ def _raster_metadata(root: Path, layer: str, outputs: dict[str, bool]) -> dict[s
         raise HTTPException(status_code=422, detail="Raster metadata could not be read") from exc
 
 
-@router.get("/api/public/shares/{share_id}/raster-metadata")
+@router.get("/api/public/map-shares/{share_id}/raster-metadata")
 def public_raster_metadata(
     share_id: str,
     layer: str,
@@ -540,7 +540,7 @@ def public_raster_metadata(
     return result
 
 
-@router.get("/api/public/shares/{share_id}/elevation")
+@router.get("/api/public/map-shares/{share_id}/elevation")
 def public_elevation(
     share_id: str,
     layer: str,

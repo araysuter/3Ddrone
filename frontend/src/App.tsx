@@ -5,6 +5,7 @@ import { AboutDialog } from "./components/AboutDialog";
 import { AuthScreen } from "./components/AuthScreen";
 import { NewProjectDialog } from "./components/NewProjectDialog";
 import { ProjectFolderDialog } from "./components/ProjectFolderDialog";
+import { ProjectShareDialog } from "./components/ProjectShareDialog";
 import { RenameMapDialog } from "./components/RenameMapDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Workspace } from "./components/Workspace";
@@ -23,6 +24,7 @@ export default function App() {
     mode: "create" | "rename";
     folder?: MapFolder;
   }>();
+  const [shareFolder, setShareFolder] = useState<MapFolder>();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
@@ -345,6 +347,7 @@ export default function App() {
         onNewFolder={() => setFolderDialog({ mode: "create" })}
         onRenameFolder={(folder) => setFolderDialog({ mode: "rename", folder })}
         onDeleteFolder={deleteFolder}
+        onShareFolder={setShareFolder}
         onMoveMap={moveMap}
         onAbout={() => setAboutOpen(true)}
         onLogout={logout}
@@ -399,6 +402,13 @@ export default function App() {
           busy={renamingMap}
           onClose={() => !renamingMap && setRenameMapProject(undefined)}
           onSubmit={saveMapName}
+        />
+      )}
+      {shareFolder && (
+        <ProjectShareDialog
+          key={shareFolder.id}
+          folder={shareFolder}
+          onClose={() => setShareFolder(undefined)}
         />
       )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />

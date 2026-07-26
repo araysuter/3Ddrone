@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Radio,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { DragEvent, useMemo, useState } from "react";
@@ -33,6 +34,7 @@ interface Props {
   onNewFolder: () => void;
   onRenameFolder: (folder: MapFolder) => void;
   onDeleteFolder: (folder: MapFolder) => Promise<void>;
+  onShareFolder: (folder: MapFolder) => void;
   onMoveMap: (mapId: string, folderId: string | null) => Promise<void>;
   onAbout: () => void;
   onLogout: () => Promise<void>;
@@ -65,6 +67,7 @@ export function Sidebar({
   onNewFolder,
   onRenameFolder,
   onDeleteFolder,
+  onShareFolder,
   onMoveMap,
   onAbout,
   onLogout,
@@ -204,6 +207,14 @@ export function Sidebar({
                     </button>
                     {menuFolderId === group.folder.id && (
                       <div className="folder-action-menu">
+                        <button
+                          onClick={() => {
+                            setMenuFolderId(undefined);
+                            onShareFolder(group.folder!);
+                          }}
+                        >
+                          <Share2 size={12} /> Share project
+                        </button>
                         <button
                           onClick={() => {
                             setMenuFolderId(undefined);

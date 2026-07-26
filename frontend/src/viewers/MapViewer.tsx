@@ -18,7 +18,7 @@ import type { Coordinate } from "ol/coordinate.js";
 import type Geometry from "ol/geom/Geometry.js";
 import { Crosshair, Eraser, MousePointer2, Pentagon, Ruler } from "lucide-react";
 import proj4 from "proj4";
-import { api, publicApi } from "../lib/api";
+import { resourceApi } from "../lib/api";
 import {
   MEASUREMENT_DECLUTTER_GROUP,
   createMeasurementStyleFunction,
@@ -31,12 +31,11 @@ import {
 } from "../lib/measurements";
 
 interface Props {
-  projectId: string;
+  resourceBase: string;
   layer: "orthomosaic" | "dsm" | "dtm";
-  publicShare?: boolean;
 }
 
-export function MapViewer({ projectId, layer, publicShare = false }: Props) {
+export function MapViewer({ resourceBase, layer }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const sourceRef = useRef(new VectorSource());
@@ -83,15 +82,11 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
     setHasMeasurements(false);
     setError("");
     setReadout("Loading raster metadata…");
-    const dataApi = publicShare ? publicApi : api;
-    const basePath = publicShare
-      ? `/api/public/shares/${projectId}`
-      : `/api/projects/${projectId}`;
-    void dataApi
-      .rasterMetadata(projectId, layer)
+    void resourceApi
+      .rasterMetadata(resourceBase, layer)
       .then((metadata) => {
         if (disposed || !target.current) return;
-        const projectionCode = `MAPPER:${projectId}:${layer}`;
+        const projectionCode = `MAPPER:${resourceBase.replace(/[^a-z0-9]/gi, "_")}:${layer}`;
         if (metadata.crs_proj4) {
           proj4.defs(projectionCode, metadata.crs_proj4);
           register(proj4);
@@ -104,7 +99,7 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
         crsLabelRef.current = metadata.crs;
         const raster = new TileLayer({
           source: new XYZ({
-            url: `${basePath}/tiles/${layer}/{z}/{x}/{-y}.png`,
+            url: `${resourceBase}/tiles/${layer}/{z}/{x}/{-y}.png`,
             crossOrigin: "use-credentials",
             minZoom: metadata.min_zoom,
             maxZoom: metadata.max_zoom,
@@ -144,8 +139,8 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
           setReadout(
             `${coordinate[0].toFixed(3)}, ${coordinate[1].toFixed(3)} · sampling ${layer.toUpperCase()}…`,
           );
-          void dataApi
-            .elevation(projectId, layer, coordinate[0], coordinate[1])
+          void resourceApi
+            .elevation(resourceBase, layer, coordinate[0], coordinate[1])
             .then((sample) => {
               const elevation =
                 sample.elevation == null ? "No elevation data" : `${sample.elevation.toFixed(3)} m`;
@@ -188,7 +183,7 @@ export function MapViewer({ projectId, layer, publicShare = false }: Props) {
       }
       mapRef.current = null;
     };
-  }, [projectId, layer, publicShare]);
+  }, [resourceBase, layer]);
 
   useEffect(() => {
     const map = mapRef.current;

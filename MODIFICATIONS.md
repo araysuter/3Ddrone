@@ -18,14 +18,18 @@ This repository combines OpenDroneMap with a local application layer. The follow
   load progress, failures, and camera fitting are visible instead of producing
   an unexplained blank canvas.
   A separate public-only build and Nginx gateway render revocable anonymous
-  map links without shipping operator screens or proxying private API routes.
+  map and named-Project links without shipping operator screens or proxying
+  private API routes.
 - `services/api/`: authentication, SQLite metadata, resumable intake, project orchestration, NodeODM client, SSE, artifacts, raster sampling, and host telemetry.
   The application adds one-level map folders, nullable map assignment, and
   metadata-only organization APIs; deleting a folder unassigns its maps without
   deleting any processing data.
-  Optional public shares use HMAC fragment secrets, scoped HttpOnly cookies,
-  sanitized metadata, aggregate access statistics, and versioned hard-link
-  snapshots that preserve the last completed publication during reprocessing.
+  Optional public shares use random UUID bearer links, sanitized metadata,
+  aggregate access statistics, and versioned hard-link snapshots that preserve
+  the last completed publication during reprocessing. Named-Project shares add
+  live membership, isolated per-map publication and retry state, scoped public
+  item UUIDs, and a read-only flat map sidebar without requiring a browser
+  cookie.
   Mapper presets disable ODM edge cropping by default (`crop=0`). A project can
   be reprocessed with new preset, output, and allowlisted Advanced settings
   while retaining its validated source uploads and keeping the prior local

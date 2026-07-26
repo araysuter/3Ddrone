@@ -4,6 +4,10 @@ import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
+  cacheDir:
+    process.env.VITE_PUBLIC_SHARE_BUILD === "true"
+      ? "node_modules/.vite-public"
+      : "node_modules/.vite-operator",
   resolve: {
     alias: {
       "@mapper-app": fileURLToPath(

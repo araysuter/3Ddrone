@@ -126,6 +126,35 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_project_shares_project
               ON project_shares(project_id);
+            CREATE TABLE IF NOT EXISTS folder_shares (
+              id TEXT PRIMARY KEY,
+              folder_id TEXT NOT NULL UNIQUE REFERENCES map_folders(id) ON DELETE CASCADE,
+              generation INTEGER NOT NULL DEFAULT 1 CHECK (generation >= 1),
+              enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+              view_count INTEGER NOT NULL DEFAULT 0 CHECK (view_count >= 0),
+              last_viewed_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_folder_shares_folder
+              ON folder_shares(folder_id);
+            CREATE TABLE IF NOT EXISTS folder_share_items (
+              id TEXT PRIMARY KEY,
+              share_id TEXT NOT NULL
+                REFERENCES folder_shares(id) ON UPDATE CASCADE ON DELETE CASCADE,
+              project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+              snapshot_version TEXT,
+              snapshot_json TEXT NOT NULL DEFAULT '{}',
+              last_published_at TEXT,
+              publish_error TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(share_id, project_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_folder_share_items_share
+              ON folder_share_items(share_id);
+            CREATE INDEX IF NOT EXISTS idx_folder_share_items_project
+              ON folder_share_items(project_id);
             """
         )
         project_columns = {

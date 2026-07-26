@@ -150,6 +150,30 @@ At 1440×900 and 1280×720:
     `/api/system`, and non-GET public methods return 404/403 while the private
     Tailscale operator remains functional. Repeat with browser console and
     network panels open and confirm share HTML/API/artifacts are `no-store`.
+23. Open a named Project's three-dot menu and select **Share project**. Confirm
+    **No Project** has no equivalent action. Create the link while the Project
+    is empty and verify a signed-out browser shows **No published maps yet**.
+24. Add two completed maps and one processing/failed map to the shared Project.
+    Confirm the public sidebar is flat, contains only the two published maps,
+    has no create controls, tree, menus, drag/drop, or logout, and labels the
+    shell **AERIAL MAPPER / SHARED PROJECT**.
+25. Open the Project base URL and confirm it replaces the address with the
+    newest map's nested URL. Switch maps, reload, and use browser back/forward.
+    At phone width, open the keyboard-accessible **Maps** drawer, select a map,
+    and confirm the drawer closes.
+26. Rename the Project and a published map, then move a map out and an eligible
+    map in. Confirm public labels and membership update without changing the
+    remaining snapshot files. Delete the named Project and confirm all
+    collection and nested URLs fail generically.
+27. Force one new Project-map publication to fail. Confirm other maps remain
+    available, the failed new map stays hidden, and the owner dialog shows the
+    failed count. Repair the artifact and use **Retry publishing**. Disable,
+    re-enable, then replace the Project link; every old collection and nested
+    URL must fail while the rotated link retains all published maps.
+28. Confirm typed map and Project routes work while legacy `/share/{uuid}` and
+    `/api/public/shares/{uuid}` return 404. Try one Project's item UUID beneath
+    another Project's share UUID and confirm its metadata and artifacts return
+    the generic unavailable response.
 
 ## Stop conditions
 

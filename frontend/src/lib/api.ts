@@ -3,6 +3,8 @@ import type {
   Artifact,
   MapFolder,
   Project,
+  ProjectShareStatus,
+  PublicProjectShare,
   PublicShareProject,
   ShareStatus,
   SystemMetrics,
@@ -173,28 +175,32 @@ export const api = {
     request<ShareStatus>(`/api/projects/${id}/share`, { method: "DELETE" }),
   regenerateShare: (id: string) =>
     request<ShareStatus>(`/api/projects/${id}/share/regenerate`, { method: "POST" }),
+  projectShareStatus: (id: string) =>
+    request<ProjectShareStatus>(`/api/folders/${id}/share`),
+  enableProjectShare: (id: string) =>
+    request<ProjectShareStatus>(`/api/folders/${id}/share`, { method: "POST" }),
+  disableProjectShare: (id: string) =>
+    request<ProjectShareStatus>(`/api/folders/${id}/share`, { method: "DELETE" }),
+  regenerateProjectShare: (id: string) =>
+    request<ProjectShareStatus>(`/api/folders/${id}/share/regenerate`, {
+      method: "POST",
+    }),
+  retryProjectShare: (id: string) =>
+    request<ProjectShareStatus>(`/api/folders/${id}/share/retry`, {
+      method: "POST",
+    }),
   options: () => request<{ options: AdvancedOption[] }>("/api/options"),
 };
 
 export const publicApi = {
-  getShare: (shareId: string) =>
-    request<PublicShareProject>(`/api/public/shares/${shareId}`),
-  elevation: (shareId: string, layer: "dsm" | "dtm", x: number, y: number) =>
-    request<{ elevation: number | null; crs: string }>(
-      `/api/public/shares/${shareId}/elevation?layer=${layer}&x=${x}&y=${y}`,
+  getMapShare: (shareId: string) =>
+    request<PublicShareProject>(`/api/public/map-shares/${shareId}`),
+  getProjectShare: (shareId: string) =>
+    request<PublicProjectShare>(`/api/public/project-shares/${shareId}`),
+  getProjectShareMap: (shareId: string, itemId: string) =>
+    request<PublicShareProject>(
+      `/api/public/project-shares/${shareId}/maps/${itemId}`,
     ),
-  rasterMetadata: (shareId: string, layer: "orthomosaic" | "dsm" | "dtm") =>
-    request<{
-      layer: string;
-      crs: string;
-      crs_proj4: string;
-      bounds: [number, number, number, number];
-      bounds_3857: [number, number, number, number];
-      min_zoom: number;
-      max_zoom: number;
-      tile_scheme: "tms";
-      units: string;
-    }>(`/api/public/shares/${shareId}/raster-metadata?layer=${layer}`),
   about: () =>
     request<{
       name: string;
@@ -203,6 +209,34 @@ export const publicApi = {
       engines: Record<string, string>;
       warranty: string;
     }>("/api/public/about"),
+};
+
+export interface RasterMetadata {
+  layer: string;
+  crs: string;
+  crs_proj4: string;
+  bounds: [number, number, number, number];
+  bounds_3857: [number, number, number, number];
+  min_zoom: number;
+  max_zoom: number;
+  tile_scheme: "tms";
+  units: string;
+}
+
+export const resourceApi = {
+  elevation: (
+    resourceBase: string,
+    layer: "dsm" | "dtm",
+    x: number,
+    y: number,
+  ) =>
+    request<{ elevation: number | null; crs: string }>(
+      `${resourceBase}/elevation?layer=${layer}&x=${x}&y=${y}`,
+    ),
+  rasterMetadata: (
+    resourceBase: string,
+    layer: "orthomosaic" | "dsm" | "dtm",
+  ) => request<RasterMetadata>(`${resourceBase}/raster-metadata?layer=${layer}`),
 };
 
 const CHUNK_SIZE = 5 * 1024 * 1024;

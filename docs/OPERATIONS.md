@@ -166,13 +166,23 @@ gateway proxies only the anonymous share API.
    hostname must show “A valid share link is required.” Confirm separately that
    the Tailscale operator URL still supports login and processing.
 
-The Share dialog warns that the link grants anonymous viewing and downloads,
-reports aggregate page views and the last view time, and can disable or replace
-the secret. Links do not expire automatically. During reprocessing, the
-previous published output remains public; a new snapshot replaces it only
-after the map reaches `completed`. Stop the profile with `make down`, or remove
-`sharing` from `COMPOSE_PROFILES` and run `make up`; disabling an individual
-map link is immediate and does not require a container restart.
+Map and Project Share dialogs warn that links grant anonymous viewing and
+downloads, report aggregate page views and the last view time, and can disable
+or replace the bearer UUID. Links do not expire automatically. Named Projects
+also report published and failed map counts, the last publication, and offer
+Retry publishing for isolated item failures.
+
+Individual-map links are `/share/maps/{uuid}`. Project collections are
+`/share/projects/{uuid}`, with reloadable selections at
+`/share/projects/{uuid}/maps/{itemUuid}`. Existing `/share/{uuid}` links are
+retired and must be copied again from their owner dialogs after this upgrade.
+
+During reprocessing, the previous published output remains public; a completed
+replacement atomically supersedes it. A new usable partial result can publish,
+but a partial or failed replacement never displaces a prior Project snapshot.
+Stop the profile with `make down`, or remove `sharing` from
+`COMPOSE_PROFILES` and run `make up`; disabling either kind of link is
+immediate and does not require a container restart.
 
 ## Backups
 

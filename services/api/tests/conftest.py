@@ -26,6 +26,8 @@ def clean_database():
         for table in (
             "project_events",
             "uploads",
+            "folder_share_items",
+            "folder_shares",
             "project_shares",
             "projects",
             "map_folders",
@@ -34,7 +36,13 @@ def clean_database():
             "admins",
         ):
             db.execute(f"DELETE FROM {table}")
-    for folder in ("source", "uploads", "metadata/projects", "metadata/shares"):
+    for folder in (
+        "source",
+        "uploads",
+        "metadata/projects",
+        "metadata/shares",
+        "metadata/folder-shares",
+    ):
         path = settings.data_root / folder
         if path.exists():
             for child in path.iterdir():

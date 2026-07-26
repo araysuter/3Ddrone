@@ -18,6 +18,7 @@ import {
   selectPointCloudArtifact,
   selectSplatArtifacts,
 } from "../lib/artifacts";
+import { artifactResourcePath } from "../lib/publicShare";
 import type { Artifact, ResultsProject } from "../types";
 
 const MapViewer = lazy(() =>
@@ -48,11 +49,13 @@ const tabs = [
   ["files", "FILES", FileArchive],
 ] as const;
 
-function downloadUrl(project: ResultsProject, artifact: Artifact, shared: boolean) {
-  const base = shared
-    ? `/api/public/shares/${project.id}`
-    : `/api/projects/${project.id}`;
-  return `${base}/artifacts/${artifact.path}`;
+function artifactResourceUrl(
+  project: ResultsProject,
+  artifact: Artifact,
+  publicResourceBase?: string,
+) {
+  const base = publicResourceBase ?? `/api/projects/${project.id}`;
+  return artifactResourcePath(base, artifact.path);
 }
 
 function find(project: ResultsProject, category: string, labelPart?: string) {
@@ -61,15 +64,17 @@ function find(project: ResultsProject, category: string, labelPart?: string) {
 
 export function ResultsView({
   project,
-  shared = false,
+  publicResourceBase,
   onShare,
   onAbout,
 }: {
   project: ResultsProject;
-  shared?: boolean;
+  publicResourceBase?: string;
   onShare?: () => void;
   onAbout?: () => void;
 }) {
+  const shared = Boolean(publicResourceBase);
+  const resourceBase = publicResourceBase ?? `/api/projects/${project.id}`;
   const availableTabs = useMemo(
     () =>
       tabs.filter(([id]) => {
@@ -153,7 +158,7 @@ export function ResultsView({
       <section className="viewer-frame">
         <Suspense fallback={<div className="viewer-loading">LOADING VIEWER…</div>}>
           {tab === "orthomosaic" && (
-            <MapViewer projectId={project.id} layer="orthomosaic" publicShare={shared} />
+            <MapViewer resourceBase={resourceBase} layer="orthomosaic" />
           )}
           {tab === "point_cloud" && (
             <ArtifactState
@@ -164,19 +169,35 @@ export function ResultsView({
               {(artifact) => {
                 if (artifact.viewer === "tiles3d") {
                   return (
-                    <TilesViewer url={downloadUrl(project, artifact, shared)} />
+                    <TilesViewer
+                      url={artifactResourceUrl(
+                        project,
+                        artifact,
+                        publicResourceBase,
+                      )}
+                    />
                   );
                 }
                 if (artifact.label.toLowerCase().includes("laz")) {
                   return (
-                    <PointCloudViewer url={downloadUrl(project, artifact, shared)} />
+                    <PointCloudViewer
+                      url={artifactResourceUrl(
+                        project,
+                        artifact,
+                        publicResourceBase,
+                      )}
+                    />
                   );
                 }
                 return (
                   <iframe
                     className="artifact-iframe"
                     title="Potree point cloud"
-                    src={downloadUrl(project, artifact, shared)}
+                    src={artifactResourceUrl(
+                      project,
+                      artifact,
+                      publicResourceBase,
+                    )}
                   />
                 );
               }}
@@ -190,13 +211,27 @@ export function ResultsView({
             >
               {(artifact) =>
                 artifact.viewer === "tiles3d" ? (
-                  <TilesViewer url={downloadUrl(project, artifact, shared)} />
+                  <TilesViewer
+                    url={artifactResourceUrl(
+                      project,
+                      artifact,
+                      publicResourceBase,
+                    )}
+                  />
                 ) : (
                   <ModelViewer
-                    url={downloadUrl(project, artifact, shared)}
+                    url={artifactResourceUrl(
+                      project,
+                      artifact,
+                      publicResourceBase,
+                    )}
                     fallbackUrl={
                       meshArtifacts.fallback
-                        ? downloadUrl(project, meshArtifacts.fallback, shared)
+                        ? artifactResourceUrl(
+                            project,
+                            meshArtifacts.fallback,
+                            publicResourceBase,
+                          )
                         : undefined
                     }
                   />
@@ -213,10 +248,18 @@ export function ResultsView({
             >
               {(artifact) => (
                 <SplatViewer
-                  url={downloadUrl(project, artifact, shared)}
+                  url={artifactResourceUrl(
+                    project,
+                    artifact,
+                    publicResourceBase,
+                  )}
                   fallbackUrl={
                     splatArtifacts.fallback
-                      ? downloadUrl(project, splatArtifacts.fallback, shared)
+                      ? artifactResourceUrl(
+                          project,
+                          splatArtifacts.fallback,
+                          publicResourceBase,
+                        )
                       : undefined
                   }
                 />
@@ -237,7 +280,7 @@ export function ResultsView({
                   </button>
                 )}
               </div>
-              <MapViewer projectId={project.id} layer={elevation} publicShare={shared} />
+              <MapViewer resourceBase={resourceBase} layer={elevation} />
             </div>
           )}
           {tab === "report" && (
@@ -246,12 +289,21 @@ export function ResultsView({
                 <iframe
                   className="artifact-iframe report"
                   title="ODM quality report"
-                  src={downloadUrl(project, artifact, shared)}
+                  src={artifactResourceUrl(
+                    project,
+                    artifact,
+                    publicResourceBase,
+                  )}
                 />
               )}
             </ArtifactState>
           )}
-          {tab === "files" && <FileBrowser project={project} shared={shared} />}
+          {tab === "files" && (
+            <FileBrowser
+              project={project}
+              publicResourceBase={publicResourceBase}
+            />
+          )}
         </Suspense>
       </section>
       <footer className="accuracy-footer">
@@ -300,7 +352,13 @@ function ArtifactState({
   );
 }
 
-function FileBrowser({ project, shared }: { project: ResultsProject; shared: boolean }) {
+function FileBrowser({
+  project,
+  publicResourceBase,
+}: {
+  project: ResultsProject;
+  publicResourceBase?: string;
+}) {
   const artifacts = project.artifacts ?? [];
   return (
     <div className="file-browser">
@@ -313,7 +371,11 @@ function FileBrowser({ project, shared }: { project: ResultsProject; shared: boo
       </header>
       <div className="file-list">
         {artifacts.map((artifact) => (
-          <a href={downloadUrl(project, artifact, shared)} key={artifact.id} download>
+          <a
+            href={artifactResourceUrl(project, artifact, publicResourceBase)}
+            key={artifact.id}
+            download
+          >
             <FileArchive size={15} />
             <span>
               <strong>{artifact.label}</strong>

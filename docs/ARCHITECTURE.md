@@ -17,10 +17,11 @@ operator API. The private frontend and its `127.0.0.1:8080` binding do not join
 the public network.
 
 The public Vite entry renders the same `ResultsView` and `MapViewer` components
-as the operator UI. The `publicShare` flag changes only artifact, raster, and
-elevation requests to the restricted public API, so Inspect, Distance, Area,
-measurement units, labels, Escape behavior, and Clear remain one shared
-implementation across private and recipient-facing views.
+as the operator UI. Each viewer receives an explicit resource base URL, so
+private maps, individual public maps, and maps nested inside public Projects
+share one renderer without deriving access scope from an internal map ID.
+Inspect, Distance, Area, measurement units, labels, Escape behavior, and Clear
+remain one shared implementation across private and recipient-facing views.
 
 The API owns processing-map state. The legacy `projects` table and
 `/api/projects` routes continue to represent individual maps for compatibility;
@@ -50,6 +51,8 @@ splat/work/<project UUID>/   Optional COLMAP export, ODM conversion, checkpoints
 metadata/mapper.sqlite3      Users, sessions, maps, folders, uploads, and SSE events
 metadata/projects/<UUID>/    Extracted allowlisted artifacts and all.zip
 metadata/shares/<UUID>/      Hard-linked, versioned public result snapshots
+metadata/folder-shares/<UUID>/items/<UUID>/versions/<version>/
+                             Hard-linked public Project map snapshots
 logs/nodeodm/                NodeODM logs
 uploads/                     Incomplete resumable parts
 ```
@@ -81,6 +84,32 @@ snapshot, after which the old version is removed. Public responses are
 `private, no-store`, carry `X-Robots-Tag: noindex`, and contain a sanitized
 project snapshot without internal task IDs, paths, errors, uploads, source
 metadata, advanced settings, or service state.
+
+`folder_shares` stores one random UUID bearer ID per named Project, plus its
+enabled state, generation, and collection page-view metrics.
+`folder_share_items` assigns a separate random public item UUID to each
+published map and records its active immutable snapshot. Public Project payloads
+contain only the Project display name, public item IDs, sanitized map metadata,
+and allowlisted artifacts. They never expose `map_folders.id`, internal
+`projects.id`, processing errors, uploads, paths, advanced settings, or service
+state.
+
+Project membership is reconciled live. Completed maps publish a new version
+atomically. A first usable partial result may publish, while a partial or failed
+replacement preserves the prior snapshot and records an owner-visible
+publication issue. Moving or deleting a map removes its old Project item;
+moving an eligible map into a shared Project publishes it. Deleting the named
+Project revokes its link and removes its publication tree. Disabling preserves
+snapshots but makes collection and nested-map endpoints unavailable. Replacing
+the link updates the UUID with cascading item ownership, moves the snapshot
+root, and resets collection metrics so every old URL fails immediately.
+
+Individual public routes are `/share/maps/{shareUuid}` backed by
+`/api/public/map-shares/{shareUuid}`. Project routes are
+`/share/projects/{shareUuid}` and
+`/share/projects/{shareUuid}/maps/{itemUuid}`, backed by the scoped
+`/api/public/project-shares/...` namespace. The legacy `/share/{uuid}` and
+`/api/public/shares/{uuid}` surfaces are intentionally not routed.
 
 NodeODM receives an effectively non-expiring task retention value because
 upstream interprets zero as immediate deletion. Its temporary, uncommitted

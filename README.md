@@ -160,6 +160,19 @@ result while a new run is incomplete. Public sharing is off by default; follow
 [Operations and recovery](docs/OPERATIONS.md#public-read-only-sharing) to
 configure the dedicated Cloudflare Tunnel.
 
+Named Projects can also be published from **Project actions → Share project**.
+One revocable project link shows a read-only, flat sidebar containing every
+completed or usable partial map currently assigned to that Project. Membership
+is live: eligible maps are added after processing, moves take effect
+immediately, and renames update public labels without copying artifacts again.
+The public Project view has no project tree, create buttons, menus, drag/drop,
+logout, or processing actions. **No Project** cannot be shared.
+
+New individual-map links use `/share/maps/{uuid}`. Project links use
+`/share/projects/{uuid}` and select maps at
+`/share/projects/{uuid}/maps/{itemUuid}`. Legacy `/share/{uuid}` links are
+intentionally retired and must be redistributed from the map Share dialog.
+
 ## Development
 
 Backend:

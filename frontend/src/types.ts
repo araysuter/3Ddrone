@@ -95,6 +95,38 @@ export interface ShareStatus {
   share?: ShareDetails | null;
 }
 
+export interface ProjectShareIssue {
+  map_name: string;
+  message: string;
+}
+
+export interface ProjectShareDetails {
+  enabled: boolean;
+  url: string;
+  view_count: number;
+  last_viewed_at?: string | null;
+  last_published_at?: string | null;
+  published_map_count: number;
+  failed_map_count: number;
+  publication_issues: ProjectShareIssue[];
+}
+
+export interface ProjectShareStatus {
+  configured: boolean;
+  share?: ProjectShareDetails | null;
+}
+
+export interface PublicProjectMapSummary {
+  id: string;
+  name: string;
+  status: "completed" | "partial";
+}
+
+export interface PublicProjectShare {
+  name: string;
+  maps: PublicProjectMapSummary[];
+}
+
 export interface MapFolder {
   id: string;
   name: string;

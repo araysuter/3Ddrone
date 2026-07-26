@@ -93,12 +93,12 @@ def test_share_link_is_public_revocable_and_rotates_id(authenticated):
     share_id, share = _share_parts(created.json())
     assert created.json()["configured"] is True
     assert share["enabled"] is True
-    assert share["url"] == f"https://dronemaps.ashersuter.com/share/{share_id}"
+    assert share["url"] == f"https://dronemaps.ashersuter.com/share/maps/{share_id}"
 
     admin_token = _without_admin(client)
     assert client.get("/api/projects").status_code == 401
 
-    detail = client.get(f"/api/public/shares/{share_id}")
+    detail = client.get(f"/api/public/map-shares/{share_id}")
     assert detail.status_code == 200
     assert "no-store" in detail.headers["cache-control"]
     assert detail.headers["x-robots-tag"] == "noindex, nofollow, noarchive, nosnippet"
@@ -123,7 +123,7 @@ def test_share_link_is_public_revocable_and_rotates_id(authenticated):
         "archive",
     }
     artifact = client.get(
-        f"/api/public/shares/{share_id}/artifacts/"
+        f"/api/public/map-shares/{share_id}/artifacts/"
         "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
     assert artifact.status_code == 200
@@ -142,7 +142,7 @@ def test_share_link_is_public_revocable_and_rotates_id(authenticated):
     assert disabled.json()["share"]["enabled"] is False
 
     client.cookies.delete("mapper_session")
-    assert client.get(f"/api/public/shares/{share_id}").status_code == 404
+    assert client.get(f"/api/public/map-shares/{share_id}").status_code == 404
     _restore_admin(client, admin_token)
     enabled = client.post(
         f"/api/projects/{project_id}/share",
@@ -161,10 +161,10 @@ def test_share_link_is_public_revocable_and_rotates_id(authenticated):
     assert new_share["last_viewed_at"] is None
 
     client.cookies.delete("mapper_session")
-    assert client.get(f"/api/public/shares/{share_id}").status_code == 404
-    assert client.get(f"/api/public/shares/{new_share_id}").status_code == 200
+    assert client.get(f"/api/public/map-shares/{share_id}").status_code == 404
+    assert client.get(f"/api/public/map-shares/{new_share_id}").status_code == 200
     artifact = client.get(
-        f"/api/public/shares/{new_share_id}/artifacts/"
+        f"/api/public/map-shares/{new_share_id}/artifacts/"
         "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
     assert artifact.status_code == 200
@@ -185,7 +185,7 @@ def test_share_keeps_last_publication_until_completed_result_is_published(authen
     preview.unlink()
     preview.write_bytes(b"new-orthomosaic")
     before_publish = client.get(
-        f"/api/public/shares/{share_id}/artifacts/"
+        f"/api/public/map-shares/{share_id}/artifacts/"
         "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
     assert before_publish.content == b"old-orthomosaic"
@@ -193,7 +193,7 @@ def test_share_keeps_last_publication_until_completed_result_is_published(authen
     update_project(project_id, status="completed", stage="Completed", progress=100)
     assert publish_existing_share(project_id) is True
     after_publish = client.get(
-        f"/api/public/shares/{share_id}/artifacts/"
+        f"/api/public/map-shares/{share_id}/artifacts/"
         "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
     assert after_publish.content == b"new-orthomosaic"
@@ -226,7 +226,7 @@ def test_project_folder_rename_updates_published_header(authenticated):
     assert renamed.status_code == 200
     _without_admin(client)
     assert (
-        client.get(f"/api/public/shares/{share_id}").json()["folder_name"]
+        client.get(f"/api/public/map-shares/{share_id}").json()["folder_name"]
         == "Renamed client project"
     )
 
@@ -250,11 +250,11 @@ def test_map_rename_updates_published_header_without_republishing_files(authenti
     assert preview.read_bytes() == b"old-orthomosaic"
 
     _without_admin(client)
-    public = client.get(f"/api/public/shares/{share_id}")
+    public = client.get(f"/api/public/map-shares/{share_id}")
     assert public.status_code == 200
     assert public.json()["name"] == "Shared map — July 26"
     artifact = client.get(
-        f"/api/public/shares/{share_id}/artifacts/"
+        f"/api/public/map-shares/{share_id}/artifacts/"
         "artifacts/odm_orthophoto/odm_orthophoto.png"
     )
     assert artifact.content == b"old-orthomosaic"

@@ -34,6 +34,13 @@ from .db import (
     update_project,
     utcnow,
 )
+from .folder_sharing import (
+    refresh_folder_share_map_name,
+    remove_folder_share,
+    remove_folder_share_items_for_project,
+    router as folder_sharing_router,
+    sync_folder_share_membership,
+)
 from .inspection import classify_file, inspect_files, validate_magic
 from .jobs import notify_runner, runner_healthy, start_runner, stop_runner
 from .nodeodm import NodeODMClient, NodeODMError
@@ -77,6 +84,7 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(sharing_router)
+app.include_router(folder_sharing_router)
 
 
 class Credentials(BaseModel):
@@ -477,6 +485,7 @@ def delete_folder(
         row["id"]
         for row in all_rows("SELECT id FROM projects WHERE folder_id=?", (folder_id,))
     ]
+    remove_folder_share(folder_id)
     with transaction() as db:
         db.execute(
             "UPDATE projects SET folder_id=NULL,updated_at=? WHERE folder_id=?",
@@ -547,6 +556,7 @@ def rename_project(
         if cursor.rowcount != 1:
             raise HTTPException(status_code=404, detail="Map not found")
     refresh_share_map_names([project_id])
+    refresh_folder_share_map_name(project_id)
     return get_project(project_id)
 
 
@@ -556,7 +566,8 @@ def assign_project_folder(
     payload: FolderAssignment,
     _: dict = Depends(require_csrf),
 ) -> dict[str, Any]:
-    get_project(project_id)
+    project = get_project(project_id)
+    old_folder_id = project.get("folder_id")
     with transaction() as db:
         if payload.folder_id and not db.execute(
             "SELECT 1 FROM map_folders WHERE id=?", (payload.folder_id,)
@@ -567,6 +578,7 @@ def assign_project_folder(
             (payload.folder_id, utcnow(), project_id),
         )
     refresh_share_folder_labels([project_id])
+    sync_folder_share_membership(project_id, old_folder_id, payload.folder_id)
     return get_project(project_id)
 
 
@@ -957,6 +969,7 @@ async def delete_project(
         for row in all_rows("SELECT id FROM uploads WHERE project_id=?", (project_id,))
     ]
     remove_project_share(project_id)
+    remove_folder_share_items_for_project(project_id)
     with transaction() as db:
         db.execute("DELETE FROM projects WHERE id=?", (project_id,))
     for upload_id in upload_ids:

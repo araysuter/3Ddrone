@@ -11,6 +11,7 @@ import httpx
 from .artifacts import artifacts_root, install_nodeodm_archive, project_root
 from .config import settings
 from .db import all_rows, decode_project, emit_event, one, transaction, update_project
+from .folder_sharing import publish_folder_share_for_project
 from .nodeodm import NodeODMClient, NodeODMError, nodeodm_output_paths
 from .presets import PRESETS, resolve_odm_options
 from .sharing import publish_existing_share
@@ -127,6 +128,7 @@ async def worker_loop() -> None:
                 raise
             except Exception as exc:
                 update_project(project["id"], status="failed", stage="Failed", error=str(exc))
+                publish_folder_share_for_project(project["id"])
                 emit_event(project["id"], "state", {"status": "failed", "error": str(exc)})
             continue
         wake.clear()
@@ -350,6 +352,7 @@ async def process_project(project: dict[str, Any]) -> None:
             progress=failed_progress,
             error=message,
         )
+        publish_folder_share_for_project(project_id)
         emit_event(
             project_id,
             "state",
@@ -378,6 +381,7 @@ async def process_project(project: dict[str, Any]) -> None:
     else:
         update_project(project_id, status="completed", stage="Completed", progress=100)
         publish_existing_share(project_id)
+        publish_folder_share_for_project(project_id)
         emit_event(project_id, "state", {"status": "completed", "progress": 100})
 
 
@@ -482,6 +486,7 @@ async def run_splat(project: dict[str, Any]) -> None:
             )
         update_project(project_id, status="completed", stage="Completed", progress=100, error=None)
         publish_existing_share(project_id)
+        publish_folder_share_for_project(project_id)
         emit_event(project_id, "state", {"status": "completed", "progress": 100})
     except Exception as exc:
         current = one("SELECT cancel_requested FROM projects WHERE id=?", (project_id,))
@@ -496,6 +501,7 @@ async def run_splat(project: dict[str, Any]) -> None:
                 progress=96,
                 error=str(exc),
             )
+            publish_folder_share_for_project(project_id)
             emit_event(project_id, "state", {"status": "partial", "error": str(exc)})
 
 
@@ -520,4 +526,5 @@ async def _demo_process(project: dict[str, Any]) -> None:
         await asyncio.sleep(0.7)
     update_project(project_id, status="completed", stage="Completed", progress=100)
     publish_existing_share(project_id)
+    publish_folder_share_for_project(project_id)
     emit_event(project_id, "state", {"status": "completed", "progress": 100})
