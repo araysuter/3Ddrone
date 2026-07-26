@@ -1143,6 +1143,15 @@ button {
   background-color: #0c161e;
 }
 
+.ol-map:focus {
+  outline: none;
+}
+
+.ol-map:focus-visible {
+  outline: 2px solid var(--blue-light);
+  outline-offset: -2px;
+}
+
 .viewer-loading {
   display: grid;
   width: 100%;
@@ -1193,6 +1202,47 @@ button {
 .viewer-toolbar button.active {
   color: #b8d9fa;
   background: #16304a;
+}
+
+.viewer-unit-toggle {
+  display: flex;
+  height: 33px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0 5px;
+  border-right: 1px solid var(--border);
+}
+
+.viewer-toolbar .viewer-unit-toggle button {
+  width: 25px;
+  height: 21px;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #697985;
+  font: 650 8px/1 var(--mono);
+  text-transform: uppercase;
+}
+
+.viewer-toolbar .viewer-unit-toggle button:hover {
+  color: #a9c1d4;
+  background: #121f29;
+}
+
+.viewer-toolbar .viewer-unit-toggle button.active {
+  border-color: #315c82;
+  color: #c5e0f7;
+  background: #173149;
+}
+
+.viewer-toolbar .viewer-unit-toggle button:focus-visible,
+.viewer-toolbar > button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--blue-light);
+  outline-offset: -2px;
 }
 
 .viewer-toolbar > span {

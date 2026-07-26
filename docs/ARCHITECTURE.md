@@ -183,7 +183,13 @@ products, and ODM creates an internal 2.5D terrain surface for raster products
 even when the exported 3D model is disabled. Gaussian splatting is independent
 and is never submitted when its output switch is off.
 
-Measurement tools display project-CRS distance and area. Consumer GPS is always labeled best effort. GCP-assisted projects still require report review; the app does not promote them to certified survey grade.
+Measurement tools calculate project-CRS distance and area. Fixed-pixel map
+labels show polyline totals, polygon side lengths, and polygon area without
+replacing the coordinate toolbar; viewers can switch between a persisted
+imperial default and metric units in authenticated or public-share views.
+Consumer GPS is always labeled best effort. GCP-assisted projects still
+require report review; the app does not promote them to certified survey
+grade.
 
 The Advanced drawer is populated from the running NodeODM option metadata, but
 the server exposes only a small typed allowlist. Arbitrary paths, clusters,

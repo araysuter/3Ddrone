@@ -88,7 +88,12 @@ At 1440×900 and 1280×720:
    texture. Also verify that the Draco-compressed GLB fallback opens.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
-7. Compare distance, area, and DSM/DTM samples against QGIS.
+7. Compare distance, area, and DSM/DTM samples against QGIS. In both the
+   authenticated and public-share viewers, confirm imperial is the first-visit
+   default, the `ft`/`m` choice persists, distance totals and area side/center
+   labels update live, Escape finishes a valid distance polyline, Escape
+   cancels a one-point attempt without leaving Distance mode, and labels remain
+   fixed-size and decluttered when zoomed out.
 8. Force a splat failure and confirm ODM results remain available with a separate retry.
 9. Restart each container during its owned stage and verify reconciliation.
 10. Open the Advanced drawer and verify only the server allowlist appears;
