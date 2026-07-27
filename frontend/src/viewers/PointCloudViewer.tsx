@@ -34,10 +34,12 @@ export function PointCloudViewer({ url }: { url: string }) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enabled = false;
     const navigation = createGroundOrbitController(
       controls,
       camera,
       renderer.domElement,
+      { allowAboveGroundOrbit: true },
     );
 
     let disposed = false;
@@ -75,6 +77,7 @@ export function PointCloudViewer({ url }: { url: string }) {
         controls.target.set(0, 0, 0);
         camera.position.set(radius * 1.2, radius * 0.8, radius * 1.2);
         navigation.setScene(radius);
+        controls.enabled = true;
         setLoading(false);
       } catch (reason: unknown) {
         const detail = reason instanceof Error ? reason.message : String(reason);

@@ -38,6 +38,7 @@ export function ModelViewer({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enabled = false;
     const navigation = createGroundOrbitController(
       controls,
       camera,
@@ -198,6 +199,7 @@ export function ModelViewer({
         controls.target.set(0, 0, 0);
         camera.position.set(size * 1.4, size * 0.9, size * 1.4);
         navigation.setScene(size);
+        controls.enabled = true;
         setProgress(100);
         setLoading(false);
       })

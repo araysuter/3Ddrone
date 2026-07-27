@@ -40,6 +40,7 @@ export function SplatViewer({
     let disposed = false;
     let activeSplat: SplatMesh | null = null;
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enabled = false;
     controls.enableDamping = true;
 
     const loadSplat = async (candidateUrl: string) => {
@@ -92,6 +93,7 @@ export function SplatViewer({
         camera.far = Math.max(1000, radius * 100);
         camera.updateProjectionMatrix();
         controls.update();
+        controls.enabled = true;
         setProgress(100);
         setLoading(false);
       })

@@ -1,10 +1,12 @@
-import type { PerspectiveCamera } from "three";
+import { MOUSE, type PerspectiveCamera } from "three";
 import type { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const ORBIT_ZOOM_BASE = 0.95;
 const LINEAR_ZOOM_PER_DELTA = 0.0008;
 const CONSTANT_PAN_PER_PIXEL = 0.0015;
 const MIN_SCENE_SCALE = 0.000001;
+const OVERHEAD_POLAR_LIMIT = 0.01;
+const GROUND_HORIZON_POLAR_LIMIT = Math.PI / 2 - 0.01;
 
 export function normalizedWheelDelta(event: Pick<WheelEvent, "ctrlKey" | "deltaMode" | "deltaY">) {
   let delta = event.deltaY;
@@ -59,10 +61,36 @@ export interface GroundOrbitController {
   dispose: () => void;
 }
 
+export interface GroundOrbitOptions {
+  allowAboveGroundOrbit?: boolean;
+}
+
+export function groundOrbitPolarLimits(
+  initialPolarAngle: number,
+  allowAboveGroundOrbit = false,
+) {
+  return allowAboveGroundOrbit
+    ? {
+        minimum: OVERHEAD_POLAR_LIMIT,
+        maximum: GROUND_HORIZON_POLAR_LIMIT,
+      }
+    : {
+        minimum: initialPolarAngle,
+        maximum: initialPolarAngle,
+      };
+}
+
+export function configureGroundMouseButtons(
+  controls: Pick<OrbitControls, "mouseButtons">,
+) {
+  controls.mouseButtons.MIDDLE = MOUSE.PAN;
+}
+
 export function createGroundOrbitController(
   controls: OrbitControls,
   camera: PerspectiveCamera,
   element: HTMLElement,
+  options: GroundOrbitOptions = {},
 ): GroundOrbitController {
   let sceneScale = 1;
   let groundY = 0;
@@ -75,6 +103,7 @@ export function createGroundOrbitController(
   controls.maxDistance = Infinity;
   controls.minTargetRadius = 0;
   controls.maxTargetRadius = Infinity;
+  configureGroundMouseButtons(controls);
 
   const updateNavigationRates = () => {
     const distance = controls.getDistance();
@@ -128,9 +157,12 @@ export function createGroundOrbitController(
       groundY = nextGroundY;
       controls.target.y = groundY;
       controls.update();
-      const fixedPolarAngle = controls.getPolarAngle();
-      controls.minPolarAngle = fixedPolarAngle;
-      controls.maxPolarAngle = fixedPolarAngle;
+      const polarLimits = groundOrbitPolarLimits(
+        controls.getPolarAngle(),
+        options.allowAboveGroundOrbit,
+      );
+      controls.minPolarAngle = polarLimits.minimum;
+      controls.maxPolarAngle = polarLimits.maximum;
       updateNavigationRates();
       controls.update();
       controls.saveState();

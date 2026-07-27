@@ -87,10 +87,15 @@ At 1440×900 and 1280×720:
    detail, and that the LAS/LAZ 1.4 fallback remains responsive while its
    worker decodes a multi-million-point cloud. Confirm the 3D model prefers
    Tiles/GLB and that the OBJ/MTL/JPEG fallback keeps its photographic texture.
-   In both the authenticated and public-share views, verify horizontal orbit
-   stays locked to the ground plane, repeated wheel input keeps the same zoom
-   step at near and far distances, and an equal pointer drag pans the same
-   world-space distance at near and far zoom.
+   In both the authenticated and public-share views, verify point-cloud orbit
+   reaches a near-overhead view, stops at the ground horizon instead of
+   crossing underneath the cloud, repeated wheel input keeps the same zoom step
+   at near and far distances, and an equal pointer drag pans the same
+   world-space distance at near and far zoom. Hold the scroll wheel and drag to
+   confirm it pans without orbiting; normal wheel scrolling must still zoom.
+   While EPT detail or an adaptive 3D Tiles pass is streaming, confirm the
+   locked status appears and orbit, pan, and zoom input has no effect.
+   Confirm navigation resumes when that loading pass reaches completion.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
 7. Compare distance, area, and DSM/DTM samples against QGIS. In both the

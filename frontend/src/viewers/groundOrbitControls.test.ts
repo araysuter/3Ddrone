@@ -1,6 +1,9 @@
+import { MOUSE } from "three";
 import { describe, expect, it } from "vitest";
 import {
+  configureGroundMouseButtons,
   constantPanSpeed,
+  groundOrbitPolarLimits,
   linearZoomSpeed,
 } from "./groundOrbitControls";
 
@@ -38,5 +41,43 @@ describe("constantPanSpeed", () => {
 
     expect(projection(200, far)).toBeCloseTo(1.5);
     expect(projection(40, near)).toBeCloseTo(1.5);
+  });
+});
+
+describe("configureGroundMouseButtons", () => {
+  it("maps a held scroll wheel to pan without changing normal wheel zoom", () => {
+    const controls = {
+      mouseButtons: {
+        LEFT: MOUSE.ROTATE,
+        MIDDLE: MOUSE.DOLLY,
+        RIGHT: MOUSE.PAN,
+      },
+    };
+
+    configureGroundMouseButtons(controls);
+
+    expect(controls.mouseButtons).toEqual({
+      LEFT: MOUSE.ROTATE,
+      MIDDLE: MOUSE.PAN,
+      RIGHT: MOUSE.PAN,
+    });
+  });
+});
+
+describe("groundOrbitPolarLimits", () => {
+  it("lets point clouds orbit from overhead to just above the ground horizon", () => {
+    const limits = groundOrbitPolarLimits(1.1, true);
+
+    expect(limits.minimum).toBeGreaterThan(0);
+    expect(limits.minimum).toBeLessThan(0.02);
+    expect(limits.maximum).toBeLessThan(Math.PI / 2);
+    expect(limits.maximum).toBeGreaterThan(Math.PI / 2 - 0.02);
+  });
+
+  it("keeps the fixed-elevation behavior for other 3D viewers", () => {
+    expect(groundOrbitPolarLimits(1.1)).toEqual({
+      minimum: 1.1,
+      maximum: 1.1,
+    });
   });
 });

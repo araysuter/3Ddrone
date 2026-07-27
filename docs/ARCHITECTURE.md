@@ -216,10 +216,14 @@ product.
   so decompression and coordinate conversion do not block the UI.
 - Textured mesh: generated OGC 3D Tiles are preferred, followed by the compact
   Draco-capable GLB and finally ODM's authoritative OBJ/MTL/JPEG package.
-- Three-dimensional viewers share ground-anchored navigation. Orbit preserves
-  its elevation above the ground plane, wheel zoom uses a constant world-space
-  step without a practical distance cap, and panning uses a constant
-  world-space rate rather than scaling with camera distance.
+- Three-dimensional viewers share ground-anchored navigation. Point-cloud
+  orbit can pitch from near-overhead to the ground horizon but cannot cross
+  below the ground plane. Wheel zoom uses a constant world-space step without
+  a practical distance cap. Right-button or held-scroll-wheel dragging pans at
+  a constant world-space rate rather than scaling with camera distance.
+  Interaction stays locked while point-cloud detail is streaming, including
+  each adaptive 3D Tiles loading pass, so late data cannot invalidate an
+  in-progress camera gesture.
 - Gaussian splat: Spark 2.1 loads SPZ or PLY, reports streaming progress, and
   fits the camera to the decoded Gaussian bounds after initialization.
 - Report: same-origin embedded PDF.

@@ -1174,7 +1174,7 @@ button {
   position: absolute;
   z-index: 1;
   top: 12px;
-  right: 12px;
+  left: 12px;
   padding: 6px 8px;
   border: 1px solid #294054;
   border-radius: 4px;

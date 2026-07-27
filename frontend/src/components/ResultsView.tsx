@@ -91,6 +91,7 @@ function renderPointCloudArtifact(
   if (artifact.viewer === "tiles3d") {
     return (
       <TilesViewer
+        allowAboveGroundOrbit
         fallback={
           fallback
             ? renderPointCloudArtifact(

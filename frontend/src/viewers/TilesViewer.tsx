@@ -6,11 +6,13 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createGroundOrbitController } from "./groundOrbitControls";
 
 function TilesScene({
+  allowAboveGroundOrbit,
   fallbackAvailable,
   loadingLabel,
   onFailure,
   url,
 }: {
+  allowAboveGroundOrbit: boolean;
   fallbackAvailable: boolean;
   loadingLabel: string;
   onFailure: () => void;
@@ -18,11 +20,13 @@ function TilesScene({
 }) {
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [interactionReady, setInteractionReady] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!target.current) return;
     setLoading(true);
+    setInteractionReady(false);
     setError("");
     const host = target.current;
     const scene = new THREE.Scene();
@@ -43,10 +47,12 @@ function TilesScene({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enabled = false;
     const navigation = createGroundOrbitController(
       controls,
       camera,
       renderer.domElement,
+      { allowAboveGroundOrbit },
     );
     scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.5));
 
@@ -84,6 +90,16 @@ function TilesScene({
       setLoading(false);
       fit();
     };
+    const loadStart = () => {
+      if (!loadedModel) return;
+      controls.enabled = false;
+      setInteractionReady(false);
+    };
+    const loadEnd = () => {
+      if (!loadedModel) return;
+      controls.enabled = true;
+      setInteractionReady(true);
+    };
     const loadError = () => {
       if (loadedModel) return;
       if (fallbackAvailable) {
@@ -95,6 +111,8 @@ function TilesScene({
     };
     tiles.addEventListener("load-tileset", fit);
     tiles.addEventListener("load-model", loadModel);
+    tiles.addEventListener("tiles-load-start", loadStart);
+    tiles.addEventListener("tiles-load-end", loadEnd);
     tiles.addEventListener("load-error", loadError);
 
     let frame = 0;
@@ -121,6 +139,8 @@ function TilesScene({
       resize.disconnect();
       tiles.removeEventListener("load-tileset", fit);
       tiles.removeEventListener("load-model", loadModel);
+      tiles.removeEventListener("tiles-load-start", loadStart);
+      tiles.removeEventListener("tiles-load-end", loadEnd);
       tiles.removeEventListener("load-error", loadError);
       tiles.dispose();
       navigation.dispose();
@@ -128,7 +148,13 @@ function TilesScene({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [fallbackAvailable, loadingLabel, onFailure, url]);
+  }, [
+    allowAboveGroundOrbit,
+    fallbackAvailable,
+    loadingLabel,
+    onFailure,
+    url,
+  ]);
 
   return (
     <div className="three-viewer" ref={target}>
@@ -137,16 +163,23 @@ function TilesScene({
           LOADING {loadingLabel}…
         </div>
       )}
+      {!loading && !interactionReady && (
+        <div className="viewer-streaming">
+          {loadingLabel} · LOCKED
+        </div>
+      )}
       {error && <div className="viewer-error">{error}</div>}
     </div>
   );
 }
 
 export function TilesViewer({
+  allowAboveGroundOrbit = false,
   fallback,
   loadingLabel = "3D TILES",
   url,
 }: {
+  allowAboveGroundOrbit?: boolean;
   fallback?: ReactNode;
   loadingLabel?: string;
   url: string;
@@ -155,6 +188,7 @@ export function TilesViewer({
   if (fallback && failedUrl === url) return fallback;
   return (
     <TilesScene
+      allowAboveGroundOrbit={allowAboveGroundOrbit}
       fallbackAvailable={Boolean(fallback)}
       loadingLabel={loadingLabel}
       onFailure={() => setFailedUrl(url)}

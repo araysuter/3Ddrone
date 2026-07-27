@@ -93,10 +93,12 @@ function EptScene({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enabled = false;
     const navigation = createGroundOrbitController(
       controls,
       camera,
       renderer.domElement,
+      { allowAboveGroundOrbit: true },
     );
     const abortController = new AbortController();
     const decoders = Array.from(
@@ -219,7 +221,10 @@ function EptScene({
       if (!disposed && loadedNodes === 0) {
         throw new Error("No EPT point nodes could be decoded.");
       }
-      if (!disposed) setProgress(100);
+      if (!disposed) {
+        setProgress(100);
+        controls.enabled = true;
+      }
     };
 
     void run().catch((reason: unknown) => {
@@ -273,7 +278,9 @@ function EptScene({
           LOADING COARSE POINT CLOUD…
         </div>
       ) : progress < 100 ? (
-        <div className="viewer-streaming">STREAMING DETAIL · {progress}%</div>
+        <div className="viewer-streaming">
+          DETAIL {progress}% · LOCKED
+        </div>
       ) : null}
       {error && <div className="viewer-error">{error}</div>}
     </div>
