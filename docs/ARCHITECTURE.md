@@ -214,8 +214,11 @@ product.
   EPT hierarchy streaming. The monolithic LAS/LAZ 1.4 fallback is decoded in
   bounded chunks by a Rust/WASM worker, with a six-million-point display budget,
   so decompression and coordinate conversion do not block the UI.
-- Textured mesh: generated OGC 3D Tiles are preferred, followed by the compact
-  Draco-capable GLB and finally ODM's authoritative OBJ/MTL/JPEG package.
+- Textured mesh: the compact Draco-capable GLB is preferred because it provides
+  one measurable download with percentage progress and is substantially
+  smaller than the generated multi-LOD tile hierarchy. OGC 3D Tiles remain the
+  primary viewer when no GLB exists, and ODM's authoritative OBJ/MTL/JPEG
+  package is the final fallback.
 - Three-dimensional viewers share ground-anchored navigation. Point-cloud
   orbit can pitch from near-overhead to the ground horizon but cannot cross
   below the ground plane. Wheel zoom uses a constant world-space step without
@@ -223,7 +226,9 @@ product.
   a constant world-space rate rather than scaling with camera distance.
   Interaction stays locked while point-cloud detail is streaming, including
   each adaptive 3D Tiles loading pass, so late data cannot invalidate an
-  in-progress camera gesture.
+  in-progress camera gesture. Viewer failure handlers keep stable identities so
+  operator metadata polling and public-view rerenders do not tear down and
+  restart active EPT or 3D Tiles streams.
 - Gaussian splat: Spark 2.1 loads SPZ or PLY, reports streaming progress, and
   fits the camera to the decoded Gaussian bounds after initialization.
 - Report: same-origin embedded PDF.

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import * as THREE from "three";
 import { TilesRenderer } from "3d-tiles-renderer/three";
 import { ReorientationPlugin } from "3d-tiles-renderer/three/plugins";
@@ -8,12 +14,14 @@ import { createGroundOrbitController } from "./groundOrbitControls";
 function TilesScene({
   allowAboveGroundOrbit,
   fallbackAvailable,
+  lockWhileStreaming,
   loadingLabel,
   onFailure,
   url,
 }: {
   allowAboveGroundOrbit: boolean;
   fallbackAvailable: boolean;
+  lockWhileStreaming: boolean;
   loadingLabel: string;
   onFailure: () => void;
   url: string;
@@ -89,9 +97,13 @@ function TilesScene({
       loadedModel = true;
       setLoading(false);
       fit();
+      if (!lockWhileStreaming) {
+        controls.enabled = true;
+        setInteractionReady(true);
+      }
     };
     const loadStart = () => {
-      if (!loadedModel) return;
+      if (!loadedModel || !lockWhileStreaming) return;
       controls.enabled = false;
       setInteractionReady(false);
     };
@@ -151,6 +163,7 @@ function TilesScene({
   }, [
     allowAboveGroundOrbit,
     fallbackAvailable,
+    lockWhileStreaming,
     loadingLabel,
     onFailure,
     url,
@@ -176,22 +189,26 @@ function TilesScene({
 export function TilesViewer({
   allowAboveGroundOrbit = false,
   fallback,
+  lockWhileStreaming = false,
   loadingLabel = "3D TILES",
   url,
 }: {
   allowAboveGroundOrbit?: boolean;
   fallback?: ReactNode;
+  lockWhileStreaming?: boolean;
   loadingLabel?: string;
   url: string;
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const handleFailure = useCallback(() => setFailedUrl(url), [url]);
   if (fallback && failedUrl === url) return fallback;
   return (
     <TilesScene
       allowAboveGroundOrbit={allowAboveGroundOrbit}
       fallbackAvailable={Boolean(fallback)}
+      lockWhileStreaming={lockWhileStreaming}
       loadingLabel={loadingLabel}
-      onFailure={() => setFailedUrl(url)}
+      onFailure={handleFailure}
       url={url}
     />
   );

@@ -92,6 +92,7 @@ function renderPointCloudArtifact(
     return (
       <TilesViewer
         allowAboveGroundOrbit
+        lockWhileStreaming
         fallback={
           fallback
             ? renderPointCloudArtifact(

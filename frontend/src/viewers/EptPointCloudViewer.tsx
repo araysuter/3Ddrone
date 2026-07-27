@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
@@ -295,13 +295,14 @@ export function EptPointCloudViewer({
   url: string;
 }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const handleFailure = useCallback(() => setFailedUrl(url), [url]);
   if (fallbackUrl && failedUrl === url) {
     return <PointCloudViewer url={fallbackUrl} />;
   }
   return (
     <EptScene
       fallbackAvailable={Boolean(fallbackUrl)}
-      onFailure={() => setFailedUrl(url)}
+      onFailure={handleFailure}
       url={url}
     />
   );

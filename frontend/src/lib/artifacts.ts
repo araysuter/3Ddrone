@@ -34,9 +34,9 @@ export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
   const glb = findArtifact(artifacts, "mesh", "GLB");
   const tiles = findArtifact(artifacts, "mesh", "3D Tiles");
   return {
-    primary: tiles ?? glb ?? obj,
-    fallback: tiles ? (glb ?? obj) : glb ? obj : undefined,
-    finalFallback: tiles && glb ? obj : undefined,
+    primary: glb ?? tiles ?? obj,
+    fallback: glb ? obj : tiles ? obj : undefined,
+    finalFallback: undefined,
   };
 }
 

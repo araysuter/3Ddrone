@@ -85,8 +85,10 @@ At 1440×900 and 1280×720:
 4. Open orthomosaic, point cloud, 3D model, splat, elevation, report, and files.
    Confirm point-cloud 3D Tiles and EPT reveal coarse geometry before full
    detail, and that the LAS/LAZ 1.4 fallback remains responsive while its
-   worker decodes a multi-million-point cloud. Confirm the 3D model prefers
-   Tiles/GLB and that the OBJ/MTL/JPEG fallback keeps its photographic texture.
+   worker decodes a multi-million-point cloud. Confirm the 3D model prefers the
+   compact GLB, displays percentage progress while loading, fits the completed
+   model into view, shows a preparing state while decoding, and retains the
+   photographic OBJ/MTL/JPEG fallback.
    In both the authenticated and public-share views, verify point-cloud orbit
    reaches a near-overhead view, stops at the ground horizon instead of
    crossing underneath the cloud, repeated wheel input keeps the same zoom step
@@ -96,6 +98,9 @@ At 1440×900 and 1280×720:
    While EPT detail or an adaptive 3D Tiles pass is streaming, confirm the
    locked status appears and orbit, pan, and zoom input has no effect.
    Confirm navigation resumes when that loading pass reaches completion.
+   While it streams, allow operator project polling to run (or rerender the
+   public results view) and confirm progress never returns to coarse loading
+   and previously decoded geometry remains visible.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
 7. Compare distance, area, and DSM/DTM samples against QGIS. In both the

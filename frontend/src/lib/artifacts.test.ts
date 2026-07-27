@@ -87,15 +87,15 @@ describe("LAS/LAZ metadata", () => {
 });
 
 describe("selectMeshArtifacts", () => {
-  it("prefers progressive tiles and retains compact GLB as a fallback", () => {
+  it("prefers the compact GLB and retains OBJ as its fallback", () => {
     const obj = artifact("Textured terrain mesh OBJ", "mesh", "mesh");
     const glb = artifact("Textured terrain mesh GLB", "mesh", "mesh");
     const tiles = artifact("OGC 3D Tiles textured model", "tiles3d", "mesh");
 
     expect(selectMeshArtifacts([tiles, glb, obj])).toEqual({
-      primary: tiles,
-      fallback: glb,
-      finalFallback: obj,
+      primary: glb,
+      fallback: obj,
+      finalFallback: undefined,
     });
   });
 
@@ -105,6 +105,17 @@ describe("selectMeshArtifacts", () => {
 
     expect(selectMeshArtifacts([obj, glb])).toEqual({
       primary: glb,
+      fallback: obj,
+      finalFallback: undefined,
+    });
+  });
+
+  it("uses 3D Tiles when no compact GLB is available", () => {
+    const obj = artifact("Textured terrain mesh OBJ", "mesh", "mesh");
+    const tiles = artifact("OGC 3D Tiles textured model", "tiles3d", "mesh");
+
+    expect(selectMeshArtifacts([tiles, obj])).toEqual({
+      primary: tiles,
       fallback: obj,
       finalFallback: undefined,
     });

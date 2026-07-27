@@ -239,7 +239,9 @@ export function ModelViewer({
     <div className="three-viewer" ref={target}>
       {loading && (
         <div className="viewer-loading viewer-overlay">
-          LOADING 3D MODEL{progress == null ? "…" : ` · ${progress}%`}
+          {progress === 100
+            ? "PREPARING 3D MODEL…"
+            : `LOADING 3D MODEL${progress == null ? "…" : ` · ${progress}%`}`}
         </div>
       )}
       {error && <div className="viewer-error">{error}</div>}
