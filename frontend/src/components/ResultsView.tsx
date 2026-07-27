@@ -15,29 +15,43 @@ import {
 import {
   findArtifact,
   selectMeshArtifacts,
-  selectPointCloudArtifact,
+  selectPointCloudArtifacts,
   selectSplatArtifacts,
 } from "../lib/artifacts";
 import { artifactResourcePath } from "../lib/publicShare";
 import type { Artifact, ResultsProject } from "../types";
 
-const MapViewer = lazy(() =>
-  import("../viewers/MapViewer").then((module) => ({ default: module.MapViewer })),
-);
-const ModelViewer = lazy(() =>
-  import("../viewers/ModelViewer").then((module) => ({ default: module.ModelViewer })),
-);
-const PointCloudViewer = lazy(() =>
+const loadMapViewer = () =>
+  import("../viewers/MapViewer").then((module) => ({
+    default: module.MapViewer,
+  }));
+const loadModelViewer = () =>
+  import("../viewers/ModelViewer").then((module) => ({
+    default: module.ModelViewer,
+  }));
+const loadPointCloudViewer = () =>
   import("../viewers/PointCloudViewer").then((module) => ({
     default: module.PointCloudViewer,
-  })),
-);
-const SplatViewer = lazy(() =>
-  import("../viewers/SplatViewer").then((module) => ({ default: module.SplatViewer })),
-);
-const TilesViewer = lazy(() =>
-  import("../viewers/TilesViewer").then((module) => ({ default: module.TilesViewer })),
-);
+  }));
+const loadEptPointCloudViewer = () =>
+  import("../viewers/EptPointCloudViewer").then((module) => ({
+    default: module.EptPointCloudViewer,
+  }));
+const loadSplatViewer = () =>
+  import("../viewers/SplatViewer").then((module) => ({
+    default: module.SplatViewer,
+  }));
+const loadTilesViewer = () =>
+  import("../viewers/TilesViewer").then((module) => ({
+    default: module.TilesViewer,
+  }));
+
+const MapViewer = lazy(loadMapViewer);
+const ModelViewer = lazy(loadModelViewer);
+const PointCloudViewer = lazy(loadPointCloudViewer);
+const EptPointCloudViewer = lazy(loadEptPointCloudViewer);
+const SplatViewer = lazy(loadSplatViewer);
+const TilesViewer = lazy(loadTilesViewer);
 
 const tabs = [
   ["orthomosaic", "ORTHOMOSAIC", Map],
@@ -60,6 +74,103 @@ function artifactResourceUrl(
 
 function find(project: ResultsProject, category: string, labelPart?: string) {
   return findArtifact(project.artifacts, category, labelPart);
+}
+
+function renderPointCloudArtifact(
+  project: ResultsProject,
+  artifact: Artifact,
+  publicResourceBase?: string,
+  fallback?: Artifact,
+  finalFallback?: Artifact,
+) {
+  const artifactUrl = artifactResourceUrl(
+    project,
+    artifact,
+    publicResourceBase,
+  );
+  if (artifact.viewer === "tiles3d") {
+    return (
+      <TilesViewer
+        fallback={
+          fallback
+            ? renderPointCloudArtifact(
+                project,
+                fallback,
+                publicResourceBase,
+                finalFallback,
+              )
+            : undefined
+        }
+        loadingLabel="POINT CLOUD"
+        url={artifactUrl}
+      />
+    );
+  }
+  if (artifact.label.toLowerCase().includes("ept")) {
+    return (
+      <EptPointCloudViewer
+        fallbackUrl={
+          fallback
+            ? artifactResourceUrl(project, fallback, publicResourceBase)
+            : undefined
+        }
+        url={artifactUrl}
+      />
+    );
+  }
+  if (artifact.label.toLowerCase().includes("laz")) {
+    return <PointCloudViewer url={artifactUrl} />;
+  }
+  return (
+    <iframe
+      className="artifact-iframe"
+      title="Potree point cloud"
+      src={artifactUrl}
+    />
+  );
+}
+
+function renderMeshArtifact(
+  project: ResultsProject,
+  artifact: Artifact,
+  publicResourceBase?: string,
+  fallback?: Artifact,
+  finalFallback?: Artifact,
+) {
+  if (artifact.viewer === "tiles3d") {
+    return (
+      <TilesViewer
+        fallback={
+          fallback ? (
+            <ModelViewer
+              url={artifactResourceUrl(project, fallback, publicResourceBase)}
+              fallbackUrl={
+                finalFallback
+                  ? artifactResourceUrl(
+                      project,
+                      finalFallback,
+                      publicResourceBase,
+                    )
+                  : undefined
+              }
+            />
+          ) : undefined
+        }
+        loadingLabel="3D MODEL"
+        url={artifactResourceUrl(project, artifact, publicResourceBase)}
+      />
+    );
+  }
+  return (
+    <ModelViewer
+      url={artifactResourceUrl(project, artifact, publicResourceBase)}
+      fallbackUrl={
+        fallback
+          ? artifactResourceUrl(project, fallback, publicResourceBase)
+          : undefined
+      }
+    />
+  );
 }
 
 export function ResultsView({
@@ -96,7 +207,27 @@ export function ResultsView({
     () => enabledElevationLayers[0] ?? "dsm",
   );
   const meshArtifacts = selectMeshArtifacts(project.artifacts);
+  const pointCloudArtifacts = selectPointCloudArtifacts(project.artifacts);
   const splatArtifacts = selectSplatArtifacts(project.artifacts);
+  const preloadViewer = (tabId: string) => {
+    if (typeof window === "undefined") return;
+    if (tabId === "orthomosaic" || tabId === "elevation") {
+      void loadMapViewer();
+    } else if (tabId === "point_cloud") {
+      const primary = pointCloudArtifacts.primary;
+      if (primary?.viewer === "tiles3d") void loadTilesViewer();
+      else if (primary?.label.toLowerCase().includes("ept")) {
+        void loadEptPointCloudViewer();
+      } else if (primary?.label.toLowerCase().includes("laz")) {
+        void loadPointCloudViewer();
+      }
+    } else if (tabId === "mesh") {
+      if (meshArtifacts.primary?.viewer === "tiles3d") void loadTilesViewer();
+      else void loadModelViewer();
+    } else if (tabId === "splat") {
+      void loadSplatViewer();
+    }
+  };
   const stats = useMemo(
     () => [
       ["IMAGES", `${project.inspection.images ?? "—"}`],
@@ -143,7 +274,13 @@ export function ResultsView({
       </section>
       <nav className="result-tabs" aria-label="Project outputs">
         {availableTabs.map(([id, label, Icon]) => (
-          <button className={tab === id ? "active" : ""} key={id} onClick={() => setTab(id)}>
+          <button
+            className={tab === id ? "active" : ""}
+            key={id}
+            onClick={() => setTab(id)}
+            onFocus={() => preloadViewer(id)}
+            onMouseEnter={() => preloadViewer(id)}
+          >
             <Icon size={14} />
             {label}
           </button>
@@ -163,44 +300,18 @@ export function ResultsView({
           {tab === "point_cloud" && (
             <ArtifactState
               project={project}
-              artifact={selectPointCloudArtifact(project.artifacts)}
+              artifact={pointCloudArtifacts.primary}
               shared={shared}
             >
-              {(artifact) => {
-                if (artifact.viewer === "tiles3d") {
-                  return (
-                    <TilesViewer
-                      url={artifactResourceUrl(
-                        project,
-                        artifact,
-                        publicResourceBase,
-                      )}
-                    />
-                  );
-                }
-                if (artifact.label.toLowerCase().includes("laz")) {
-                  return (
-                    <PointCloudViewer
-                      url={artifactResourceUrl(
-                        project,
-                        artifact,
-                        publicResourceBase,
-                      )}
-                    />
-                  );
-                }
-                return (
-                  <iframe
-                    className="artifact-iframe"
-                    title="Potree point cloud"
-                    src={artifactResourceUrl(
-                      project,
-                      artifact,
-                      publicResourceBase,
-                    )}
-                  />
-                );
-              }}
+              {(artifact) =>
+                renderPointCloudArtifact(
+                  project,
+                  artifact,
+                  publicResourceBase,
+                  pointCloudArtifacts.fallback,
+                  pointCloudArtifacts.downloadFallback,
+                )
+              }
             </ArtifactState>
           )}
           {tab === "mesh" && (
@@ -210,31 +321,12 @@ export function ResultsView({
               shared={shared}
             >
               {(artifact) =>
-                artifact.viewer === "tiles3d" ? (
-                  <TilesViewer
-                    url={artifactResourceUrl(
-                      project,
-                      artifact,
-                      publicResourceBase,
-                    )}
-                  />
-                ) : (
-                  <ModelViewer
-                    url={artifactResourceUrl(
-                      project,
-                      artifact,
-                      publicResourceBase,
-                    )}
-                    fallbackUrl={
-                      meshArtifacts.fallback
-                        ? artifactResourceUrl(
-                            project,
-                            meshArtifacts.fallback,
-                            publicResourceBase,
-                          )
-                        : undefined
-                    }
-                  />
+                renderMeshArtifact(
+                  project,
+                  artifact,
+                  publicResourceBase,
+                  meshArtifacts.fallback,
+                  meshArtifacts.finalFallback,
                 )
               }
             </ArtifactState>

@@ -1,72 +1,198 @@
 /// <reference lib="webworker" />
 
-import { LAZRsLoader } from "@loaders.gl/las";
-import { ODM_LAZ_OPTIONS } from "../lib/laz";
+// @loaders.gl/las does not export its LAS 1.4-capable decoder, but it ships the
+// generated module and declarations. Importing it directly avoids the package
+// reader's per-point WASM calls while retaining its well-tested LAZ-RS codec.
+import initLazRsWasm, {
+  WasmLasZipDecompressor,
+} from "../../node_modules/@loaders.gl/las/dist/libs/laz-rs-wasm/laz_rs_wasm.js";
+import {
+  lazSkipForBudget,
+  parseLasHeader,
+  type LazDecodeRequest,
+  type LazDecodeResult,
+} from "../lib/laz";
 
-type NumericArray = Float32Array | Float64Array;
+const DECODE_CHUNK_POINTS = 100_000;
 
-self.onmessage = async (event: MessageEvent<{ buffer: ArrayBuffer }>) => {
-  try {
-    // The Rust/WASM decoder supports LAS/LAZ 1.4, including point formats 6-10
-    // produced by current ODM/PDAL builds.
-    const mesh = await LAZRsLoader.parse(event.data.buffer, ODM_LAZ_OPTIONS);
-    const positionAttribute = mesh.attributes.POSITION;
-    if (!positionAttribute || positionAttribute.size < 3) {
-      throw new Error("The file does not contain XYZ positions.");
+let lazRsReady: Promise<unknown> | null = null;
+
+function initializeLazRs() {
+  lazRsReady ??= initLazRsWasm(undefined);
+  return lazRsReady;
+}
+
+function colorByte(value: number, highColorDepth: boolean) {
+  return highColorDepth ? Math.min(255, Math.round(value / 257)) : value;
+}
+
+function usesHighColorDepth(
+  view: DataView,
+  pointCount: number,
+  pointRecordLength: number,
+  colorOffset: number,
+) {
+  const sampleCount = Math.min(pointCount, 4096);
+  const sampleStride = Math.max(1, Math.floor(pointCount / sampleCount));
+  for (let index = 0; index < pointCount; index += sampleStride) {
+    const base = index * pointRecordLength + colorOffset;
+    if (
+      view.getUint16(base, true) > 255 ||
+      view.getUint16(base + 2, true) > 255 ||
+      view.getUint16(base + 4, true) > 255
+    ) {
+      return true;
     }
-    const values = positionAttribute.value as NumericArray;
-    const pointCount =
-      mesh.header?.vertexCount ??
-      Math.floor(values.length / positionAttribute.size);
-    if (!pointCount) throw new Error("The file contains no points.");
+  }
+  return false;
+}
 
-    const bounds = mesh.header?.boundingBox;
-    const centerX = bounds ? (bounds[0][0] + bounds[1][0]) / 2 : values[0];
-    const centerY = bounds ? (bounds[0][1] + bounds[1][1]) / 2 : values[1];
-    const centerZ = bounds ? (bounds[0][2] + bounds[1][2]) / 2 : values[2];
+self.onmessage = async (event: MessageEvent<LazDecodeRequest>) => {
+  const { buffer, id, maxPoints, origin } = event.data;
+  let decompressor: WasmLasZipDecompressor | null = null;
+  try {
+    const header = parseLasHeader(buffer);
+    const sourcePointCount = header.pointCount;
+    if (!sourcePointCount) throw new Error("The file contains no points.");
+    const skip = lazSkipForBudget(buffer, maxPoints);
+    const pointCount = Math.ceil(sourcePointCount / skip);
+    const { maximum, minimum } = header.bounds;
+    const centerX =
+      origin?.[0] ?? (minimum[0] + maximum[0]) / 2;
+    const centerY =
+      origin?.[1] ?? (minimum[1] + maximum[1]) / 2;
+    const groundZ = origin?.[2] ?? minimum[2];
     const positions = new Float32Array(pointCount * 3);
-    const sourceColor = mesh.attributes.COLOR_0;
-    const sourceColors = sourceColor?.value as Uint8Array | undefined;
-    const colors = sourceColor ? new Uint8Array(pointCount * 3) : null;
+    const colors = header.colorOffset == null
+      ? null
+      : new Uint8Array(pointCount * 3);
     let radiusSquared = 0;
+    let destinationPoint = 0;
+    let sourcePoint = 0;
+    let highColorDepth: boolean | null = null;
 
-    for (let index = 0; index < pointCount; index += 1) {
-      const sourceIndex = index * positionAttribute.size;
-      const destinationIndex = index * 3;
-      // ODM point clouds are Z-up. Center while values are still Float64 so
-      // projected coordinates preserve local centimeter-scale detail.
-      const x = values[sourceIndex] - centerX;
-      const y = values[sourceIndex + 2] - centerZ;
-      const z = -(values[sourceIndex + 1] - centerY);
-      positions[destinationIndex] = x;
-      positions[destinationIndex + 1] = y;
-      positions[destinationIndex + 2] = z;
-      radiusSquared = Math.max(radiusSquared, x * x + y * y + z * z);
-
-      if (colors && sourceColors && sourceColor) {
-        const colorIndex = index * sourceColor.size;
-        colors[destinationIndex] = sourceColors[colorIndex];
-        colors[destinationIndex + 1] = sourceColors[colorIndex + 1];
-        colors[destinationIndex + 2] = sourceColors[colorIndex + 2];
+    if (header.compressed) {
+      await initializeLazRs();
+      decompressor = new WasmLasZipDecompressor(new Uint8Array(buffer));
+    } else {
+      const requiredBytes =
+        header.pointsOffset + sourcePointCount * header.pointRecordLength;
+      if (requiredBytes > buffer.byteLength) {
+        throw new Error("The LAS point records are incomplete.");
       }
     }
 
+    while (sourcePoint < sourcePointCount) {
+      const chunkPointCount = Math.min(
+        DECODE_CHUNK_POINTS,
+        sourcePointCount - sourcePoint,
+      );
+      const byteLength = chunkPointCount * header.pointRecordLength;
+      let chunk: Uint8Array;
+      if (decompressor) {
+        chunk = new Uint8Array(byteLength);
+        // One call expands a complete chunk. The previous reader invoked this
+        // once for every source point, which dominated load time.
+        decompressor.decompress_many(chunk);
+      } else {
+        chunk = new Uint8Array(
+          buffer,
+          header.pointsOffset + sourcePoint * header.pointRecordLength,
+          byteLength,
+        );
+      }
+      const view = new DataView(
+        chunk.buffer,
+        chunk.byteOffset,
+        chunk.byteLength,
+      );
+      if (header.colorOffset != null && highColorDepth == null) {
+        highColorDepth = usesHighColorDepth(
+          view,
+          chunkPointCount,
+          header.pointRecordLength,
+          header.colorOffset,
+        );
+      }
+
+      let localPoint = (skip - (sourcePoint % skip)) % skip;
+      for (; localPoint < chunkPointCount; localPoint += skip) {
+        const sourceByte = localPoint * header.pointRecordLength;
+        const destinationIndex = destinationPoint * 3;
+        const x =
+          view.getInt32(sourceByte, true) * header.scale[0] +
+          header.offset[0] -
+          centerX;
+        const y =
+          view.getInt32(sourceByte + 8, true) * header.scale[2] +
+          header.offset[2] -
+          groundZ;
+        const z = -(
+          view.getInt32(sourceByte + 4, true) * header.scale[1] +
+          header.offset[1] -
+          centerY
+        );
+        positions[destinationIndex] = x;
+        positions[destinationIndex + 1] = y;
+        positions[destinationIndex + 2] = z;
+        radiusSquared = Math.max(radiusSquared, x * x + y * y + z * z);
+
+        if (
+          colors &&
+          header.colorOffset != null &&
+          highColorDepth != null
+        ) {
+          const colorIndex = sourceByte + header.colorOffset;
+          colors[destinationIndex] = colorByte(
+            view.getUint16(colorIndex, true),
+            highColorDepth,
+          );
+          colors[destinationIndex + 1] = colorByte(
+            view.getUint16(colorIndex + 2, true),
+            highColorDepth,
+          );
+          colors[destinationIndex + 2] = colorByte(
+            view.getUint16(colorIndex + 4, true),
+            highColorDepth,
+          );
+        }
+        destinationPoint += 1;
+      }
+      sourcePoint += chunkPointCount;
+    }
+
+    const finalPositions =
+      destinationPoint === pointCount
+        ? positions
+        : positions.slice(0, destinationPoint * 3);
+    const finalColors =
+      colors && destinationPoint !== pointCount
+        ? colors.slice(0, destinationPoint * 3)
+        : colors;
     const transfer: Transferable[] = [positions.buffer];
-    if (colors) transfer.push(colors.buffer);
-    self.postMessage(
-      {
-        type: "success",
-        positions,
-        colors,
-        pointCount,
-        radius: Math.sqrt(radiusSquared),
-      },
-      { transfer },
-    );
+    if (finalPositions !== positions) {
+      transfer[0] = finalPositions.buffer;
+    }
+    if (finalColors) transfer.push(finalColors.buffer);
+    const result: LazDecodeResult = {
+      type: "success",
+      id,
+      positions: finalPositions,
+      colors: finalColors,
+      pointCount: destinationPoint,
+      sourcePointCount,
+      radius: Math.sqrt(radiusSquared),
+      skip,
+    };
+    self.postMessage(result, { transfer });
   } catch (reason: unknown) {
-    self.postMessage({
+    const result: LazDecodeResult = {
       type: "error",
+      id,
       message: reason instanceof Error ? reason.message : String(reason),
-    });
+    };
+    self.postMessage(result);
+  } finally {
+    decompressor?.free();
   }
 };

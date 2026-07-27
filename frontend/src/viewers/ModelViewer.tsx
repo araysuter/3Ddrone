@@ -5,6 +5,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createGroundOrbitController } from "./groundOrbitControls";
 
 export function ModelViewer({
   url,
@@ -15,24 +16,33 @@ export function ModelViewer({
 }) {
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!target.current) return;
     setLoading(true);
+    setProgress(null);
     setError("");
     const host = target.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#081018");
     const camera = new THREE.PerspectiveCamera(55, host.clientWidth / host.clientHeight, 0.01, 10000);
     camera.position.set(3, 2, 3);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    const navigation = createGroundOrbitController(
+      controls,
+      camera,
+      renderer.domElement,
+    );
     scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.5));
     let disposed = false;
     let model: THREE.Object3D | null = null;
@@ -57,13 +67,25 @@ export function ModelViewer({
 
     const draco = new DRACOLoader();
     draco.setDecoderPath("/draco/");
-    draco.setWorkerLimit(2);
+    draco.setWorkerLimit(
+      Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 1)),
+    );
     draco.preload();
     const loadGlb = (glbUrl: string) =>
       new Promise<THREE.Object3D>((resolve, reject) => {
         const loader = new GLTFLoader();
         loader.setDRACOLoader(draco);
-        loader.load(glbUrl, (gltf) => resolve(gltf.scene), undefined, reject);
+        loader.load(
+          glbUrl,
+          (gltf) => resolve(gltf.scene),
+          (event) => {
+            if (!event.lengthComputable || !event.total) return;
+            setProgress(
+              Math.min(100, Math.round((event.loaded / event.total) * 100)),
+            );
+          },
+          reject,
+        );
       });
     const loadObj = (objUrl: string) =>
       new Promise<THREE.Object3D>((resolve, reject) => {
@@ -73,6 +95,9 @@ export function ModelViewer({
         const failedTextures: string[] = [];
         let loadedObject: THREE.Object3D | null = null;
         manager.onError = (failedUrl) => failedTextures.push(failedUrl);
+        manager.onProgress = (_item, loaded, total) => {
+          if (total > 0) setProgress(Math.round((loaded / total) * 100));
+        };
         manager.onLoad = () => {
           if (!loadedObject) return;
           if (failedTextures.length) {
@@ -112,14 +137,17 @@ export function ModelViewer({
           reject,
         );
       });
+    const loadCandidate = (candidateUrl: string) =>
+      candidateUrl.toLowerCase().endsWith(".obj")
+        ? loadObj(candidateUrl)
+        : loadGlb(candidateUrl);
     const loadModel = async () => {
       try {
-        return url.toLowerCase().endsWith(".obj")
-          ? await loadObj(url)
-          : await loadGlb(url);
+        return await loadCandidate(url);
       } catch (primaryError) {
         if (!fallbackUrl) throw primaryError;
-        return loadGlb(fallbackUrl);
+        setProgress(null);
+        return loadCandidate(fallbackUrl);
       }
     };
     void loadModel()
@@ -147,21 +175,30 @@ export function ModelViewer({
             textured.needsUpdate = true;
           }
         });
+        // ODM's OBJ coordinates are Z-up, and its GLB export preserves those
+        // vertex coordinates. Convert both compact model fallbacks to the same
+        // Y-up, north-toward-negative-Z frame as the point-cloud viewers.
+        model.rotation.x = -Math.PI / 2;
+        model.updateMatrixWorld(true);
         const initialBox = new THREE.Box3().setFromObject(model);
         if (initialBox.isEmpty()) {
           throw new Error("The textured model contains no renderable geometry.");
         }
         const center = initialBox.getCenter(new THREE.Vector3());
-        model.position.sub(center);
+        model.position.x -= center.x;
+        model.position.y -= initialBox.min.y;
+        model.position.z -= center.z;
         scene.add(model);
         const box = new THREE.Box3().setFromObject(model);
-        const size = Math.max(box.getSize(new THREE.Vector3()).length(), 1);
+        const extent = box.getSize(new THREE.Vector3());
+        const size = Math.max(
+          new THREE.Vector3(extent.x / 2, extent.y, extent.z / 2).length(),
+          1,
+        );
         controls.target.set(0, 0, 0);
-        camera.position.set(size * 0.7, size * 0.45, size * 0.7);
-        camera.near = Math.max(0.01, size / 1000);
-        camera.far = Math.max(1000, size * 10);
-        camera.updateProjectionMatrix();
-        controls.update();
+        camera.position.set(size * 1.4, size * 0.9, size * 1.4);
+        navigation.setScene(size);
+        setProgress(100);
         setLoading(false);
       })
       .catch((reason: unknown) => {
@@ -172,7 +209,7 @@ export function ModelViewer({
       });
     let frame = 0;
     const animate = () => {
-      controls.update();
+      navigation.update();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(animate);
     };
@@ -187,6 +224,7 @@ export function ModelViewer({
       disposed = true;
       cancelAnimationFrame(frame);
       resize.disconnect();
+      navigation.dispose();
       controls.dispose();
       if (model) disposeObject(model);
       draco.dispose();
@@ -197,7 +235,11 @@ export function ModelViewer({
 
   return (
     <div className="three-viewer" ref={target}>
-      {loading && <div className="viewer-loading viewer-overlay">LOADING 3D MODEL…</div>}
+      {loading && (
+        <div className="viewer-loading viewer-overlay">
+          LOADING 3D MODEL{progress == null ? "…" : ` · ${progress}%`}
+        </div>
+      )}
       {error && <div className="viewer-error">{error}</div>}
     </div>
   );

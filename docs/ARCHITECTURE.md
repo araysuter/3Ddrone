@@ -210,10 +210,16 @@ product.
 
 - Orthomosaic/DSM/DTM: OpenLayers and local static tiles, with an optional
   off-by-default OpenStreetMap layer beneath them.
-- Point cloud: generated OGC 3D Tiles when present; otherwise a background
-  Rust/WASM worker decodes ODM's LAS/LAZ 1.4 output without blocking the UI.
-- Textured mesh: Three.js loads ODM's authoritative OBJ, MTL, and JPEG textures,
-  with the Draco-compressed GLB or OGC 3D Tiles retained as fallbacks.
+- Point cloud: generated OGC 3D Tiles are preferred, followed by coarse-first
+  EPT hierarchy streaming. The monolithic LAS/LAZ 1.4 fallback is decoded in
+  bounded chunks by a Rust/WASM worker, with a six-million-point display budget,
+  so decompression and coordinate conversion do not block the UI.
+- Textured mesh: generated OGC 3D Tiles are preferred, followed by the compact
+  Draco-capable GLB and finally ODM's authoritative OBJ/MTL/JPEG package.
+- Three-dimensional viewers share ground-anchored navigation. Orbit preserves
+  its elevation above the ground plane, wheel zoom uses a constant world-space
+  step without a practical distance cap, and panning uses a constant
+  world-space rate rather than scaling with camera distance.
 - Gaussian splat: Spark 2.1 loads SPZ or PLY, reports streaming progress, and
   fits the camera to the decoded Gaussian bounds after initialization.
 - Report: same-origin embedded PDF.

@@ -13,12 +13,20 @@ export function findArtifact(
   );
 }
 
+export function selectPointCloudArtifacts(artifacts: Artifact[] | undefined) {
+  const tiles = findArtifact(artifacts, "point_cloud", "3D Tiles");
+  const ept = findArtifact(artifacts, "point_cloud", "EPT");
+  const potree = findArtifact(artifacts, "point_cloud", "Potree");
+  const laz = findArtifact(artifacts, "point_cloud", "LAZ");
+  return {
+    primary: tiles ?? ept ?? potree ?? laz,
+    fallback: tiles ? (ept ?? potree ?? laz) : ept ? laz : undefined,
+    downloadFallback: ept ? laz : undefined,
+  };
+}
+
 export function selectPointCloudArtifact(artifacts: Artifact[] | undefined) {
-  return (
-    findArtifact(artifacts, "point_cloud", "3D Tiles") ??
-    findArtifact(artifacts, "point_cloud", "Potree") ??
-    findArtifact(artifacts, "point_cloud", "LAZ")
-  );
+  return selectPointCloudArtifacts(artifacts).primary;
 }
 
 export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
@@ -26,8 +34,9 @@ export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
   const glb = findArtifact(artifacts, "mesh", "GLB");
   const tiles = findArtifact(artifacts, "mesh", "3D Tiles");
   return {
-    primary: obj ?? glb ?? tiles,
-    fallback: obj ? glb : undefined,
+    primary: tiles ?? glb ?? obj,
+    fallback: tiles ? (glb ?? obj) : glb ? obj : undefined,
+    finalFallback: tiles && glb ? obj : undefined,
   };
 }
 

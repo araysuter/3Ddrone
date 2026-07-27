@@ -83,9 +83,14 @@ At 1440×900 and 1280×720:
 2. Interrupt and resume an upload.
 3. Cancel an active ODM task and verify the durable state.
 4. Open orthomosaic, point cloud, 3D model, splat, elevation, report, and files.
-   Confirm the LAS/LAZ 1.4 fallback works when point-cloud 3D Tiles are not
-   present, and that ODM's OBJ/MTL/JPEG model renders with its photographic
-   texture. Also verify that the Draco-compressed GLB fallback opens.
+   Confirm point-cloud 3D Tiles and EPT reveal coarse geometry before full
+   detail, and that the LAS/LAZ 1.4 fallback remains responsive while its
+   worker decodes a multi-million-point cloud. Confirm the 3D model prefers
+   Tiles/GLB and that the OBJ/MTL/JPEG fallback keeps its photographic texture.
+   In both the authenticated and public-share views, verify horizontal orbit
+   stays locked to the ground plane, repeated wheel input keeps the same zoom
+   step at near and far distances, and an equal pointer drag pans the same
+   world-space distance at near and far zoom.
 5. Download every final format.
 6. Compare raster CRS/bounds with `gdalinfo` or QGIS.
 7. Compare distance, area, and DSM/DTM samples against QGIS. In both the

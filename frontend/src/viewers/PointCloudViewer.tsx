@@ -1,25 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-
-type WorkerResult =
-  | {
-      type: "success";
-      positions: Float32Array;
-      colors: Uint8Array | null;
-      pointCount: number;
-      radius: number;
-    }
-  | { type: "error"; message: string };
+import { LazWorkerClient } from "../lib/lazWorkerClient";
+import { createGroundOrbitController } from "./groundOrbitControls";
 
 export function PointCloudViewer({ url }: { url: string }) {
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [stage, setStage] = useState("DOWNLOADING");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!target.current) return;
     setLoading(true);
+    setStage("DOWNLOADING");
     setError("");
     const host = target.current;
     const scene = new THREE.Scene();
@@ -31,73 +25,62 @@ export function PointCloudViewer({ url }: { url: string }) {
       100000,
     );
     camera.position.set(3, 2, 3);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: "high-performance",
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    const navigation = createGroundOrbitController(
+      controls,
+      camera,
+      renderer.domElement,
+    );
 
     let disposed = false;
     let points: THREE.Points | null = null;
     const abortController = new AbortController();
-    const worker = new Worker(
-      new URL("../workers/lazrs-worker.ts", import.meta.url),
-      { type: "module" },
-    );
-    worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+    const decoder = new LazWorkerClient();
+    const installPoints = (decoded: Awaited<ReturnType<typeof decoder.decode>>) => {
       if (disposed) return;
-      if (event.data.type === "error") {
-        setError(`The LAZ point cloud could not be loaded. ${event.data.message}`);
-        setLoading(false);
-        return;
-      }
       try {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute(
           "position",
-          new THREE.BufferAttribute(event.data.positions, 3),
+          new THREE.BufferAttribute(decoded.positions, 3),
         );
-        if (event.data.colors) {
+        if (decoded.colors) {
           geometry.setAttribute(
             "color",
-            new THREE.BufferAttribute(event.data.colors, 3, true),
+            new THREE.BufferAttribute(decoded.colors, 3, true),
           );
         }
-        const radius = Math.max(event.data.radius, 1);
+        const radius = Math.max(decoded.radius, 1);
         geometry.boundingSphere = new THREE.Sphere(
           new THREE.Vector3(0, 0, 0),
           radius,
         );
         const material = new THREE.PointsMaterial({
-          color: event.data.colors ? 0xffffff : 0xb8d8ef,
+          color: decoded.colors ? 0xffffff : 0xb8d8ef,
           size: Math.max(0.025, radius / 900),
           sizeAttenuation: true,
-          vertexColors: Boolean(event.data.colors),
+          vertexColors: Boolean(decoded.colors),
         });
         const loadedPoints = new THREE.Points(geometry, material);
         points = loadedPoints;
         scene.add(loadedPoints);
         controls.target.set(0, 0, 0);
         camera.position.set(radius * 1.2, radius * 0.8, radius * 1.2);
-        camera.near = Math.max(0.01, radius / 1000);
-        camera.far = Math.max(1000, radius * 100);
-        camera.updateProjectionMatrix();
-        controls.update();
+        navigation.setScene(radius);
         setLoading(false);
       } catch (reason: unknown) {
         const detail = reason instanceof Error ? reason.message : String(reason);
         setError(`The LAZ point cloud could not be loaded. ${detail}`);
         setLoading(false);
       }
-    };
-    worker.onerror = (event) => {
-      if (disposed) return;
-      setError(
-        `The LAS 1.4 decoder stopped unexpectedly. ${event.message || "Worker error"}`,
-      );
-      setLoading(false);
     };
     void fetch(url, {
       credentials: "same-origin",
@@ -110,7 +93,12 @@ export function PointCloudViewer({ url }: { url: string }) {
         return response.arrayBuffer();
       })
       .then((buffer) => {
-        if (!disposed) worker.postMessage({ buffer }, [buffer]);
+        if (disposed) return undefined;
+        setStage("DECODING");
+        return decoder.decode(buffer, { maxPoints: 6_000_000 });
+      })
+      .then((decoded) => {
+        if (decoded) installPoints(decoded);
       })
       .catch((reason: unknown) => {
         if (disposed || abortController.signal.aborted) return;
@@ -121,7 +109,7 @@ export function PointCloudViewer({ url }: { url: string }) {
 
     let frame = 0;
     const animate = () => {
-      controls.update();
+      navigation.update();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(animate);
     };
@@ -137,9 +125,10 @@ export function PointCloudViewer({ url }: { url: string }) {
     return () => {
       disposed = true;
       abortController.abort();
-      worker.terminate();
+      decoder.dispose();
       cancelAnimationFrame(frame);
       resize.disconnect();
+      navigation.dispose();
       controls.dispose();
       if (points) {
         points.geometry.dispose();
@@ -152,7 +141,11 @@ export function PointCloudViewer({ url }: { url: string }) {
 
   return (
     <div className="three-viewer" ref={target}>
-      {loading && <div className="viewer-loading viewer-overlay">LOADING POINT CLOUD…</div>}
+      {loading && (
+        <div className="viewer-loading viewer-overlay">
+          {stage} POINT CLOUD…
+        </div>
+      )}
       {error && <div className="viewer-error">{error}</div>}
     </div>
   );
