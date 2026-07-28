@@ -81,6 +81,7 @@ rerun_stages = {
     'rolling_shutter': 'opensfm',
     'rolling_shutter_readout': 'opensfm',
     'sfm_algorithm': 'opensfm',
+    'sfm_max_concurrency': 'opensfm',
     'sfm_no_partial': 'opensfm',
     'skip_3dmodel': 'odm_meshing',
     'skip_band_alignment': 'opensfm',
@@ -316,6 +317,17 @@ def config(argv=None, parser=None):
                         help=('The maximum number of processes to use in various '
                               'processes. Peak memory requirement is ~1GB per '
                               'thread and 2 megapixel image resolution. Default: %(default)s'))
+
+    parser.add_argument('--sfm-max-concurrency',
+                        metavar='<positive integer>',
+                        action=StoreValue,
+                        default=None,
+                        type=int,
+                        help=('Limit OpenSfM image processing separately from '
+                              'the global concurrency setting. This permits '
+                              'memory-heavy feature and matching work to stay '
+                              'within RAM while later CPU stages use more cores. '
+                              'Defaults to max-concurrency.'))
 
     parser.add_argument('--use-hybrid-bundle-adjustment',
                         action=StoreTrue,

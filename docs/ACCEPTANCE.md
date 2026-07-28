@@ -2,6 +2,12 @@
 
 The macOS development host can validate application logic and the rendered UI, but it cannot prove the target CUDA pipeline. Run this checklist on the Ubuntu RTX 3060 Ti host before treating the installation as production-ready.
 
+For performance changes, retain the completed sample's `benchmark.txt` and
+Splatfacto timestamps as the baseline. Confirm the new mapper log reports the
+expected `cpu-threads` and lower or equal `sfm-threads`, then compare the same
+sample, preset, and selected outputs. GPU/CPU percentages alone are not an
+acceptance result.
+
 ## Automated checks
 
 ```bash

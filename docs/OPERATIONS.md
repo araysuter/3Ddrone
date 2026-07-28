@@ -12,7 +12,12 @@ docker run --rm --gpus '"device=0"' nvidia/cuda:12.9.1-base-ubuntu24.04 nvidia-s
 make host-check
 ```
 
-The first ODM and Splatfacto image builds are large and can take a long time. Keep at least 10 GB of host RAM free for Ubuntu and application services. The API derives ODM concurrency from image megapixels, logical cores, and the remaining memory.
+The first ODM and Splatfacto image builds are large and can take a long time.
+Keep at least 10 GB of host RAM free for Ubuntu and application services. The
+API derives a memory-safe OpenSfM worker count from image megapixels, logical
+cores, and remaining memory. It separately gives later CPU stages the full
+logical-core count. An Advanced `max-concurrency` value remains an upper bound
+for both.
 
 ## Start and stop
 
@@ -222,11 +227,18 @@ run—for example, ODM needs dense reconstruction and a terrain surface to
 produce an orthomosaic.
 
 Each new run writes a mapper log line confirming the effective preset,
-feature/point-cloud quality, rolling-shutter flag, and readout accepted by
-NodeODM, followed by the enabled output names. For an FC330 High run it must report `preset=high`,
+feature/point-cloud quality, full CPU thread count, memory-safe OpenSfM thread
+count, rolling-shutter flag, and readout accepted by NodeODM, followed by the
+enabled output names. For an FC330 High run it must report `preset=high`,
 `feature-quality=ultra`, `pc-quality=high`, `rolling-shutter=True`, and
 `rolling-shutter-readout=33ms`. The API fails closed if NodeODM does not retain
 the requested options.
+
+CUDA utilization is expected only during SIFT feature extraction, OpenMVS
+dense reconstruction, and Gaussian-splat training. Meshing, classification,
+DSM/DTM, orthophoto, tiling, COG/COPC/EPT, reports, and packaging are CPU or
+I/O workloads. See [Pipeline performance and profiling](PERFORMANCE.md) before
+treating idle GPU time or a short serial stage as a fault.
 
 ## Logs and disk
 

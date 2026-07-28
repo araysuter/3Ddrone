@@ -640,6 +640,15 @@ async def execute(job: dict[str, Any]) -> None:
         str(scale),
         "--pipeline.datamanager.cache-images",
         "cpu",
+        # TensorBoard is retained for durable training logs, but the mapper
+        # never consumes validation renders. Disable those evaluation-only
+        # passes so every scheduled GPU render advances the trained model.
+        "--steps-per-eval-batch",
+        "0",
+        "--steps-per-eval-image",
+        "0",
+        "--steps-per-eval-all-images",
+        "0",
         "--vis",
         "tensorboard",
     ]

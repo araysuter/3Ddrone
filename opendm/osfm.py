@@ -251,7 +251,7 @@ class OSFMContext:
                 "flann_algorithm: KDTREE", # more stable, faster than KMEANS
                 "feature_process_size: %s" % feature_process_size,
                 "feature_min_frames: %s" % args.min_num_features,
-                "processes: %s" % args.max_concurrency,
+                "processes: %s" % (args.sfm_max_concurrency or args.max_concurrency),
                 "matching_gps_neighbors: %s" % matcher_neighbors,
                 "matching_gps_distance: 0",
                 "matching_graph_rounds: %s" % matcher_graph_rounds,

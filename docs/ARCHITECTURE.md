@@ -144,6 +144,14 @@ stateDiagram-v2
 
 There is one API job-runner task and NodeODM is configured with `parallelQueueProcessing=1`. The runner waits for ODM completion before it submits a splat job, so the two GPU-heavy workloads cannot overlap.
 
+ODM receives two concurrency limits. `sfm-max-concurrency` protects RAM during
+OpenSfM feature, matching, reconstruction, and undistortion work.
+`max-concurrency` is the full logical-core budget used by later OpenMVS,
+meshing, elevation, raster, tiling, and derivative-generation stages. The
+OpenSfM cap can never exceed the global cap. Splatfacto retains its requested
+training steps but disables periodic evaluation renders because no mapper
+workflow consumes them.
+
 The splat image preloads Splatfacto's LPIPS/AlexNet metric weights into
 `/opt/torch-cache` while the image is built. The running worker remains on the
 internal network and does not need DNS or internet access to initialize

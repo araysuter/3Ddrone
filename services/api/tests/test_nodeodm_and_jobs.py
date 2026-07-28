@@ -32,6 +32,18 @@ def test_nodeodm_image_reuses_an_existing_numeric_runtime_identity():
     assert "\nUSER odm\n" not in dockerfile
 
 
+def test_nodeodm_image_includes_stage_aware_concurrency_overlay():
+    repository = Path(__file__).resolve().parents[3]
+    dockerfile = (repository / "docker" / "nodeodm.Dockerfile").read_text()
+    odm_config = (repository / "opendm" / "config.py").read_text()
+    odm_osfm = (repository / "opendm" / "osfm.py").read_text()
+
+    assert "COPY opendm/config.py /code/opendm/config.py" in dockerfile
+    assert "COPY opendm/osfm.py /code/opendm/osfm.py" in dockerfile
+    assert "parser.add_argument('--sfm-max-concurrency'" in odm_config
+    assert "args.sfm_max_concurrency or args.max_concurrency" in odm_osfm
+
+
 def test_nodeodm_option_helper_supports_python_312(tmp_path):
     odm_root = tmp_path / "odm"
     package = odm_root / "opendm"

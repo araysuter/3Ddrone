@@ -111,11 +111,16 @@ ADVANCED_RULES: dict[str, tuple[str, Any]] = {
 }
 
 
-def calculate_concurrency(image_megapixels: float = 9, total_ram_gb: float = 48) -> int:
+def calculate_concurrency(
+    image_megapixels: float = 9,
+    total_ram_gb: float = 48,
+    logical_cores: int | None = None,
+) -> int:
     usable_gb = max(2.0, total_ram_gb - 10.0)
     per_thread_gb = max(1.0, image_megapixels / 2.0)
     memory_limit = max(1, int(usable_gb / per_thread_gb))
-    return max(1, min(os.cpu_count() or 1, memory_limit))
+    available_cores = max(1, int(logical_cores or os.cpu_count() or 1))
+    return max(1, min(available_cores, memory_limit))
 
 
 def sanitize_advanced(values: dict[str, Any] | None) -> dict[str, Any]:
@@ -173,6 +178,17 @@ def resolve_odm_options(
 ) -> list[dict[str, Any]]:
     if preset_name not in PRESETS:
         raise ValueError("Unknown preset")
+    # Inspection records this server-derived value immediately before each run.
+    # Keeping it explicit also makes reprocessing portable across hosts.
+    logical_cores = max(
+        1,
+        int(inspection.get("logical_cores") or os.cpu_count() or 1),
+    )
+    sfm_concurrency = calculate_concurrency(
+        float(inspection.get("megapixels") or 9),
+        float(inspection.get("host_ram_gb") or 48),
+        logical_cores,
+    )
     options = {
         # ODM otherwise trims a three-meter buffer from automatically detected
         # dataset boundaries. Preserve all reconstructed edge coverage by
@@ -180,12 +196,17 @@ def resolve_odm_options(
         "crop": 0,
         **PRESETS[preset_name]["odm"],
         "feature-type": "sift",
-        "max-concurrency": calculate_concurrency(
-            float(inspection.get("megapixels") or 9),
-            float(inspection.get("host_ram_gb") or 48),
-        ),
+        # OpenSfM's concurrent image work is the memory-sensitive phase. Let
+        # later OpenMVS, meshing, DEM, raster, and packaging stages use the full
+        # host while retaining the conservative OpenSfM RAM guard separately.
+        "max-concurrency": logical_cores,
+        "sfm-max-concurrency": sfm_concurrency,
     }
     options.update(sanitize_advanced(advanced))
+    options["sfm-max-concurrency"] = min(
+        int(options["sfm-max-concurrency"]),
+        int(options["max-concurrency"]),
+    )
     if outputs["orthomosaic"] or outputs["dsm"] or outputs["dtm"]:
         options["cog"] = True
         options["tiles"] = True

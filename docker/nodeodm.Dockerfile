@@ -17,6 +17,11 @@ COPY vendor/nodeodm/package*.json ./
 RUN npm ci --omit=dev
 COPY vendor/nodeodm/ ./
 COPY docker/nodeodm-config.json /var/www/local-mapper-config.json
+# These Python-only mapper scheduling changes intentionally overlay the pinned
+# ODM image. Rebuilding NodeODM can therefore pick them up without recompiling
+# the unchanged CUDA/OpenMVS toolchain.
+COPY opendm/config.py /code/opendm/config.py
+COPY opendm/osfm.py /code/opendm/osfm.py
 RUN set -eux; \
     if ! getent group "${MAPPER_GID}" >/dev/null; then \
         groupadd --gid "${MAPPER_GID}" "mapper${MAPPER_GID}"; \

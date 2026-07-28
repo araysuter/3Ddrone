@@ -11,6 +11,9 @@ The web app accepts drone imagery and supporting control files, retains every ma
 - React/Vite workstation UI behind Nginx.
 - FastAPI/SQLite orchestrator with one-time admin setup, Argon2id, secure sessions, CSRF protection, resumable uploads, SHA-256 validation, SSE, durable jobs, and allowlisted artifacts.
 - One GPU queue: NodeODM completes before the Splatfacto worker can run.
+- Stage-aware CPU scheduling: memory-heavy OpenSfM work keeps a RAM-safe worker
+  cap while OpenMVS, meshing, elevation, raster, tiling, and packaging stages
+  can use every logical core.
 - Memory-safe regular Splatfacto profiles for the 8 GB RTX 3060 Ti; `splatfacto-big` is not used.
 - Reproducible splat stack pinned to Nerfstudio 1.1.5, gsplat 1.4.0, PyTorch 2.4.1, CUDA 12.4, and compute capability 8.6.
 - OpenLayers raster maps, OGC 3D Tiles or LAS/LAZ 1.4 point clouds, Three.js
@@ -26,7 +29,7 @@ flowchart LR
     N --> A["FastAPI orchestrator"]
     A --> R["SQLite + retained project data"]
     A --> O["NodeODM 2.2.3"]
-    O --> M["Unmodified ODM 3.6.0 GPU engine"]
+    O --> M["Pinned ODM 3.6.0 GPU algorithms"]
     A --> S["Splat worker"]
     S -. optional interchange .-> C["OpenSfM export_colmap"]
     S --> V["Nerfstudio ODM converter"]
@@ -126,6 +129,14 @@ Open the HTTPS URL reported by Tailscale, create the one local administrator, an
 
 The default High profile requests 2.5 cm raster resolution, high point-cloud density, and 30,000 regular Splatfacto steps. Standard requests 5 cm and 15,000 steps. Ultra requests 1 cm and 45,000 steps. ODM still caps outputs by its estimated ground sampling distance; the application never enables `ignore-gsd`.
 
+Every new run records both the full CPU thread count and the lower,
+memory-derived OpenSfM worker count. CUDA is already used for SIFT feature
+extraction, OpenMVS dense reconstruction, and Splatfacto training. CPU-only
+stages will still leave the GPU idle, and serial or I/O-bound stages can show
+less than 100% CPU without indicating a configuration fault. Splatfacto keeps
+all requested training iterations but skips periodic validation renders that
+are not consumed by the mapper.
+
 ODM edge cropping is disabled by default with `crop=0`, so reconstructed coverage is not trimmed merely because it lies near the mapping boundary. The Advanced drawer can override that value when a deliberately cropped deliverable is desired.
 
 FC330 captures automatically receive ODM’s known 33 ms rolling-shutter correction. Litchi `.lchm` files are retained as provenance but are never submitted as reconstruction inputs. Accepted imagery is JPG/JPEG, DNG, TIF/TIFF, MP4, MOV, LRV, or MPEG transport-stream video. The supported control inputs are `gcp_list.txt`, `geo.txt`, `image_groups.txt`, `align.las`, `align.laz`, `align.tif`, and SRT subtitle telemetry.
@@ -211,6 +222,7 @@ represents a reconstruction as real output.
 - [Operations and recovery](docs/OPERATIONS.md)
 - [Architecture and data contracts](docs/ARCHITECTURE.md)
 - [GPU and sample acceptance checklist](docs/ACCEPTANCE.md)
+- [Pipeline performance and profiling](docs/PERFORMANCE.md)
 - [Local modifications](MODIFICATIONS.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Original ODM README](docs/upstream/ODM-README.md)

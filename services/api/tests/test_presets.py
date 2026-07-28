@@ -20,7 +20,12 @@ def test_high_fc330_preset_enables_gpu_products_and_known_readout():
         resolve_odm_options(
             "high",
             outputs,
-            {"camera_model": "FC330", "megapixels": 9, "host_ram_gb": 48},
+            {
+                "camera_model": "FC330",
+                "megapixels": 9,
+                "host_ram_gb": 48,
+                "logical_cores": 16,
+            },
         )
     )
     assert options["feature-type"] == "sift"
@@ -34,6 +39,8 @@ def test_high_fc330_preset_enables_gpu_products_and_known_readout():
     assert options["3d-tiles"] is True
     assert options["cog"] is True
     assert options["crop"] == 0
+    assert options["max-concurrency"] == 16
+    assert options["sfm-max-concurrency"] == 8
     assert "ignore-gsd" not in options
     assert "no-gpu" not in options
 
@@ -108,5 +115,25 @@ def test_dangerous_advanced_options_are_rejected(name):
 
 def test_concurrency_reserves_ten_gb_for_services():
     # 9 MP images are estimated at 4.5 GB/thread, leaving 38 GB for ODM.
-    assert calculate_concurrency(9, 48) <= 8
-    assert calculate_concurrency(40, 12) == 1
+    assert calculate_concurrency(9, 48, 16) == 8
+    assert calculate_concurrency(40, 12, 16) == 1
+
+
+def test_advanced_cpu_cap_also_caps_memory_safe_sfm_workers():
+    outputs = resolve_outputs({"splat": False})
+    options = as_dict(
+        resolve_odm_options(
+            "ultra",
+            outputs,
+            {
+                "camera_model": "FC330",
+                "megapixels": 9,
+                "host_ram_gb": 48,
+                "logical_cores": 16,
+            },
+            {"max-concurrency": 4},
+        )
+    )
+
+    assert options["max-concurrency"] == 4
+    assert options["sfm-max-concurrency"] == 4

@@ -108,6 +108,12 @@ def test_splat_pipeline_uses_supported_odm_and_spark_paths(
     train_command = next(command for command in commands if command[:2] == ["ns-train", "splatfacto"])
     assert Path(train_command[train_command.index("--data") + 1]).name == "nerfstudio_dataset"
     assert train_command[train_command.index("--pipeline.datamanager.camera-res-scale-factor") + 1] == "0.5"
+    for option in (
+        "--steps-per-eval-batch",
+        "--steps-per-eval-image",
+        "--steps-per-eval-all-images",
+    ):
+        assert train_command[train_command.index(option) + 1] == "0"
 
     compress_command = next(command for command in commands if command[0] == "node")
     assert compress_command[:2] == ["node", "/opt/spark/scripts/compress-to-spz.js"]

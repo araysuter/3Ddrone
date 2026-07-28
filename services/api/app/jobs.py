@@ -238,6 +238,8 @@ async def process_project(project: dict[str, Any]) -> None:
                     f"preset={project['preset']}, "
                     f"feature-quality={accepted.get('feature-quality')}, "
                     f"pc-quality={accepted.get('pc-quality')}, "
+                    f"cpu-threads={accepted.get('max-concurrency')}, "
+                    f"sfm-threads={accepted.get('sfm-max-concurrency')}, "
                     f"rolling-shutter={accepted.get('rolling-shutter', False)}, "
                     f"rolling-shutter-readout={accepted.get('rolling-shutter-readout', 0)}ms, "
                     "outputs="
