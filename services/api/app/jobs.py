@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
@@ -12,12 +13,14 @@ from .artifacts import artifacts_root, install_nodeodm_archive, project_root
 from .config import settings
 from .db import all_rows, decode_project, emit_event, one, transaction, update_project
 from .folder_sharing import publish_folder_share_for_project
+from .mesh_preview import backfill_web_mesh_previews
 from .nodeodm import NodeODMClient, NodeODMError, nodeodm_output_paths
 from .presets import PRESETS, resolve_odm_options
 from .sharing import publish_existing_share
 
 _runner_task: asyncio.Task | None = None
 _wake: asyncio.Event | None = None
+LOGGER = logging.getLogger(__name__)
 
 STAGES = [
     (0, "Queued"),
@@ -109,6 +112,10 @@ async def worker_loop() -> None:
     wake = _wake
     if wake is None:
         raise RuntimeError("Job runner wake event was not initialized")
+    try:
+        await asyncio.to_thread(_backfill_existing_mesh_previews)
+    except Exception:
+        LOGGER.exception("Could not backfill browser-optimized mesh previews")
     while True:
         project = one(
             """
@@ -136,6 +143,15 @@ async def worker_loop() -> None:
             await asyncio.wait_for(wake.wait(), timeout=5)
         except asyncio.TimeoutError:
             pass
+
+
+def _backfill_existing_mesh_previews() -> None:
+    projects = settings.data_root / "metadata" / "projects"
+    for project_id in backfill_web_mesh_previews(projects):
+        if not one("SELECT id FROM projects WHERE id=?", (project_id,)):
+            continue
+        publish_existing_share(project_id)
+        publish_folder_share_for_project(project_id)
 
 
 def _source_files(project_id: str) -> list[Path]:

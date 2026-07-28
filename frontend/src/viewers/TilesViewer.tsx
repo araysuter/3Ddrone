@@ -10,6 +10,7 @@ import { TilesRenderer } from "3d-tiles-renderer/three";
 import { ReorientationPlugin } from "3d-tiles-renderer/three/plugins";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createGroundOrbitController } from "./groundOrbitControls";
+import { ViewerProgress } from "./ViewerProgress";
 
 function TilesScene({
   allowAboveGroundOrbit,
@@ -29,12 +30,14 @@ function TilesScene({
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [interactionReady, setInteractionReady] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!target.current) return;
     setLoading(true);
     setInteractionReady(false);
+    setProgress(0);
     setError("");
     const host = target.current;
     const scene = new THREE.Scene();
@@ -50,7 +53,7 @@ function TilesScene({
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.25));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
@@ -66,12 +69,26 @@ function TilesScene({
 
     const tiles = new TilesRenderer(url);
     tiles.registerPlugin(new ReorientationPlugin({ recenter: true }));
+    const hardwareThreads = navigator.hardwareConcurrency || 4;
+    tiles.downloadQueue.maxJobs = Math.min(
+      8,
+      Math.max(4, hardwareThreads),
+    );
+    tiles.parseQueue.maxJobs = Math.min(
+      4,
+      Math.max(2, Math.floor(hardwareThreads / 2)),
+    );
+    if (!lockWhileStreaming) {
+      tiles.loadSiblings = false;
+    }
     tiles.setCamera(camera);
     tiles.setResolutionFromRenderer(camera, renderer);
     scene.add(tiles.group);
 
     let fitFrame = 0;
     let loadedModel = false;
+    let loadingPass = false;
+    let lastProgress = 0;
     const fit = () => {
       cancelAnimationFrame(fitFrame);
       fitFrame = window.requestAnimationFrame(() => {
@@ -103,12 +120,18 @@ function TilesScene({
       }
     };
     const loadStart = () => {
+      loadingPass = true;
+      lastProgress = 0;
+      setProgress(0);
       if (!loadedModel || !lockWhileStreaming) return;
       controls.enabled = false;
       setInteractionReady(false);
     };
     const loadEnd = () => {
       if (!loadedModel) return;
+      loadingPass = false;
+      lastProgress = 100;
+      setProgress(100);
       controls.enabled = true;
       setInteractionReady(true);
     };
@@ -132,6 +155,19 @@ function TilesScene({
       camera.updateMatrixWorld();
       tiles.setResolutionFromRenderer(camera, renderer);
       tiles.update();
+      if (loadingPass) {
+        const nextProgress = Math.min(
+          99,
+          Math.max(
+            lastProgress,
+            Math.round(tiles.loadProgress * 100),
+          ),
+        );
+        if (nextProgress !== lastProgress) {
+          lastProgress = nextProgress;
+          setProgress(nextProgress);
+        }
+      }
       navigation.update();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(animate);
@@ -173,12 +209,21 @@ function TilesScene({
     <div className="three-viewer" ref={target}>
       {loading && (
         <div className="viewer-loading viewer-overlay">
-          LOADING {loadingLabel}…
+          <ViewerProgress
+            label={`LOADING ${loadingLabel}`}
+            progress={progress}
+          />
         </div>
       )}
-      {!loading && !interactionReady && (
-        <div className="viewer-streaming">
-          {loadingLabel} · LOCKED
+      {!loading && progress < 100 && (
+        <div className="viewer-streaming viewer-streaming-progress">
+          <ViewerProgress
+            compact
+            label={`${loadingLabel} DETAIL${
+              interactionReady ? "" : " · LOCKED"
+            }`}
+            progress={progress}
+          />
         </div>
       )}
       {error && <div className="viewer-error">{error}</div>}

@@ -30,13 +30,21 @@ export function selectPointCloudArtifact(artifacts: Artifact[] | undefined) {
 }
 
 export function selectMeshArtifacts(artifacts: Artifact[] | undefined) {
+  const preview = findArtifact(artifacts, "mesh", "preview GLB");
   const obj = findArtifact(artifacts, "mesh", "OBJ");
   const glb = findArtifact(artifacts, "mesh", "GLB");
   const tiles = findArtifact(artifacts, "mesh", "3D Tiles");
   return {
-    primary: glb ?? tiles ?? obj,
-    fallback: glb ? obj : tiles ? obj : undefined,
-    finalFallback: undefined,
+    primary: preview ?? tiles ?? glb ?? obj,
+    fallback: preview
+      ? obj
+      : tiles
+        ? (glb ?? obj)
+        : glb
+          ? obj
+          : undefined,
+    finalFallback:
+      !preview && tiles && glb && obj ? obj : undefined,
   };
 }
 

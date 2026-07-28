@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
-import stat
 import shutil
+import stat
 import zipfile
 import uuid
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .config import settings
+from .mesh_preview import WEB_MESH_FILENAME, build_web_mesh_preview
+
+LOGGER = logging.getLogger(__name__)
 
 KNOWN_ARTIFACTS = [
     ("orthomosaic", "Orthomosaic COG", "odm_orthophoto/odm_orthophoto.tif", "map"),
@@ -17,6 +21,7 @@ KNOWN_ARTIFACTS = [
     ("point_cloud", "Point cloud COPC", "odm_georeferencing/odm_georeferenced_model.copc.laz", "download"),
     ("point_cloud", "EPT point cloud", "entwine_pointcloud/ept.json", "pointcloud"),
     ("point_cloud", "Potree point cloud", "potree_pointcloud/index.html", "pointcloud"),
+    ("mesh", "Textured mesh preview GLB", f"odm_texturing/{WEB_MESH_FILENAME}", "mesh"),
     ("mesh", "Textured mesh OBJ", "odm_texturing/odm_textured_model_geo.obj", "mesh"),
     ("mesh", "Textured mesh GLB", "odm_texturing/odm_textured_model_geo.glb", "mesh"),
     ("point_cloud", "OGC 3D Tiles point cloud", "3d_tiles/pointcloud/tileset.json", "tiles3d"),
@@ -89,6 +94,10 @@ def install_nodeodm_archive(project_id: str, archive: Path) -> None:
     archive_staging = root / ".all.zip.tmp"
     try:
         safe_extract(archive, staging)
+        try:
+            build_web_mesh_preview(staging)
+        except Exception:
+            LOGGER.exception("Could not build the browser-optimized mesh preview")
         shutil.copy2(archive, archive_staging)
         if destination.exists():
             destination.replace(previous)

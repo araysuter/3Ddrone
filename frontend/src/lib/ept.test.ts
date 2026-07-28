@@ -19,6 +19,26 @@ describe("selectEptNodes", () => {
       "1-1-0-0",
     ]);
   });
+
+  it("stops before a partial hierarchy level can create spatial seams", () => {
+    const selected = selectEptNodes(
+      {
+        "0-0-0-0": 100,
+        "1-0-0-0": 100,
+        "1-1-0-0": 100,
+        "2-0-0-0": 80,
+        "2-1-0-0": 80,
+        "2-2-0-0": 80,
+      },
+      460,
+    );
+
+    expect(selected.map((node) => node.key)).toEqual([
+      "0-0-0-0",
+      "1-0-0-0",
+      "1-1-0-0",
+    ]);
+  });
 });
 
 describe("eptSceneFrame", () => {

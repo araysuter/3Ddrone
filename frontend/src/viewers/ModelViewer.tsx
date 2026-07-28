@@ -6,13 +6,18 @@ import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createGroundOrbitController } from "./groundOrbitControls";
+import { ViewerProgress } from "./ViewerProgress";
 
 export function ModelViewer({
-  url,
   fallbackUrl,
+  fallbackSize,
+  size,
+  url,
 }: {
-  url: string;
   fallbackUrl?: string;
+  fallbackSize?: number;
+  size?: number;
+  url: string;
 }) {
   const target = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +77,7 @@ export function ModelViewer({
       Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 1)),
     );
     draco.preload();
-    const loadGlb = (glbUrl: string) =>
+    const loadGlb = (glbUrl: string, expectedBytes?: number) =>
       new Promise<THREE.Object3D>((resolve, reject) => {
         const loader = new GLTFLoader();
         loader.setDRACOLoader(draco);
@@ -80,9 +85,10 @@ export function ModelViewer({
           glbUrl,
           (gltf) => resolve(gltf.scene),
           (event) => {
-            if (!event.lengthComputable || !event.total) return;
+            const total = event.total || expectedBytes || 0;
+            if (!total || !event.loaded) return;
             setProgress(
-              Math.min(100, Math.round((event.loaded / event.total) * 100)),
+              Math.min(100, Math.round((event.loaded / total) * 100)),
             );
           },
           reject,
@@ -138,17 +144,20 @@ export function ModelViewer({
           reject,
         );
       });
-    const loadCandidate = (candidateUrl: string) =>
+    const loadCandidate = (
+      candidateUrl: string,
+      expectedBytes?: number,
+    ) =>
       candidateUrl.toLowerCase().endsWith(".obj")
         ? loadObj(candidateUrl)
-        : loadGlb(candidateUrl);
+        : loadGlb(candidateUrl, expectedBytes);
     const loadModel = async () => {
       try {
-        return await loadCandidate(url);
+        return await loadCandidate(url, size);
       } catch (primaryError) {
         if (!fallbackUrl) throw primaryError;
         setProgress(null);
-        return loadCandidate(fallbackUrl);
+        return loadCandidate(fallbackUrl, fallbackSize);
       }
     };
     void loadModel()
@@ -233,15 +242,20 @@ export function ModelViewer({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [fallbackUrl, url]);
+  }, [fallbackSize, fallbackUrl, size, url]);
 
   return (
     <div className="three-viewer" ref={target}>
       {loading && (
         <div className="viewer-loading viewer-overlay">
-          {progress === 100
-            ? "PREPARING 3D MODEL…"
-            : `LOADING 3D MODEL${progress == null ? "…" : ` · ${progress}%`}`}
+          <ViewerProgress
+            label={
+              progress === 100
+                ? "PREPARING TEXTURED MODEL"
+                : "LOADING TEXTURED MODEL"
+            }
+            progress={progress}
+          />
         </div>
       )}
       {error && <div className="viewer-error">{error}</div>}

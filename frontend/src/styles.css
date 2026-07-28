@@ -1170,6 +1170,69 @@ button {
   background: #080e13;
 }
 
+.viewer-progress {
+  display: grid;
+  width: min(320px, calc(100% - 48px));
+  gap: 9px;
+}
+
+.viewer-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #8096a8;
+  font: 600 9px/1 var(--mono);
+  letter-spacing: 0.09em;
+}
+
+.viewer-progress-copy strong {
+  color: var(--blue-light);
+  font: inherit;
+}
+
+.viewer-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border: 1px solid #294054;
+  border-radius: 999px;
+  background: #0d1821;
+}
+
+.viewer-progress-track i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1976d2, #51a8ff);
+  box-shadow: 0 0 10px rgb(60 153 246 / 36%);
+  transition: width 140ms ease-out;
+}
+
+.viewer-progress-track.indeterminate i {
+  width: 36%;
+  animation: viewer-progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+.viewer-progress.compact {
+  width: 220px;
+  gap: 6px;
+}
+
+.viewer-progress.compact .viewer-progress-track {
+  height: 4px;
+}
+
+@keyframes viewer-progress-indeterminate {
+  from {
+    transform: translateX(-110%);
+  }
+
+  to {
+    transform: translateX(290%);
+  }
+}
+
 .viewer-streaming {
   position: absolute;
   z-index: 1;
@@ -1183,6 +1246,20 @@ button {
   pointer-events: none;
   font: 600 9px/1 var(--mono);
   letter-spacing: 0.08em;
+}
+
+.viewer-streaming-progress {
+  padding: 7px 9px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewer-progress-track i {
+    transition: none;
+  }
+
+  .viewer-progress-track.indeterminate i {
+    animation: none;
+  }
 }
 
 .viewer-toolbar {

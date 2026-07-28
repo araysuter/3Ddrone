@@ -40,33 +40,12 @@ export function selectEptNodes(
       end += 1;
     }
     const level = nodes.slice(index, end);
-    if (
-      selected.length === 0 ||
-      selectedPoints + levelPoints <= pointBudget
-    ) {
-      selected.push(...level);
-      selectedPoints += levelPoints;
-      index = end;
-      continue;
-    }
-
-    const remaining = Math.max(0, pointBudget - selectedPoints);
-    if (remaining > 0) {
-      let accumulated = 0;
-      let threshold = remaining / Math.max(1, level.length);
-      for (const node of level) {
-        accumulated += node.pointCount;
-        if (
-          accumulated >= threshold &&
-          selectedPoints + node.pointCount <= pointBudget
-        ) {
-          selected.push(node);
-          selectedPoints += node.pointCount;
-          threshold += remaining / Math.max(1, level.length);
-        }
-      }
-    }
-    break;
+    // EPT levels cover the scene in spatial tiles. Loading only part of a
+    // level creates abrupt density seams at the selected tile boundaries.
+    if (selected.length > 0 && selectedPoints + levelPoints > pointBudget) break;
+    selected.push(...level);
+    selectedPoints += levelPoints;
+    index = end;
   }
   return selected;
 }

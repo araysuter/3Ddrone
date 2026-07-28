@@ -214,11 +214,14 @@ product.
   EPT hierarchy streaming. The monolithic LAS/LAZ 1.4 fallback is decoded in
   bounded chunks by a Rust/WASM worker, with a six-million-point display budget,
   so decompression and coordinate conversion do not block the UI.
-- Textured mesh: the compact Draco-capable GLB is preferred because it provides
-  one measurable download with percentage progress and is substantially
-  smaller than the generated multi-LOD tile hierarchy. OGC 3D Tiles remain the
-  primary viewer when no GLB exists, and ODM's authoritative OBJ/MTL/JPEG
-  package is the final fallback.
+- Textured mesh: the API derives a browser preview from ODM's Draco-capable GLB
+  without changing its geometry, resizing embedded texture atlases to a
+  GPU-safe maximum of 2048 px. New projects build it during artifact install;
+  the durable worker backfills existing projects and republishes their active
+  shares. The preview is preferred because it provides one substantially
+  smaller, measurable download with photographic color and a percentage bar.
+  OGC 3D Tiles provide progressive color while a preview is unavailable, with
+  the original GLB and ODM's authoritative OBJ/MTL/JPEG package as fallbacks.
 - Three-dimensional viewers share ground-anchored navigation. Point-cloud
   orbit can pitch from near-overhead to the ground horizon but cannot cross
   below the ground plane. Wheel zoom uses a constant world-space step without

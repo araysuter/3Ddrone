@@ -146,6 +146,7 @@ function renderMeshArtifact(
           fallback ? (
             <ModelViewer
               url={artifactResourceUrl(project, fallback, publicResourceBase)}
+              size={fallback.size}
               fallbackUrl={
                 finalFallback
                   ? artifactResourceUrl(
@@ -155,6 +156,7 @@ function renderMeshArtifact(
                     )
                   : undefined
               }
+              fallbackSize={finalFallback?.size}
             />
           ) : undefined
         }
@@ -166,11 +168,13 @@ function renderMeshArtifact(
   return (
     <ModelViewer
       url={artifactResourceUrl(project, artifact, publicResourceBase)}
+      size={artifact.size}
       fallbackUrl={
         fallback
           ? artifactResourceUrl(project, fallback, publicResourceBase)
           : undefined
       }
+      fallbackSize={fallback?.size}
     />
   );
 }

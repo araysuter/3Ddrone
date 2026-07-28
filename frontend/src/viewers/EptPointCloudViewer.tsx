@@ -12,6 +12,7 @@ import { PointCloudViewer } from "./PointCloudViewer";
 
 const POINT_BUDGET = 6_000_000;
 const DECODER_COUNT = 2;
+const POINT_SIZE_DIVISOR = 800;
 
 async function fetchJson<T>(url: string, signal: AbortSignal) {
   const response = await fetch(url, {
@@ -127,7 +128,9 @@ function EptScene({
       const baseUrl = new URL(".", new URL(url, window.location.href)).toString();
       const frame = eptSceneFrame(metadata);
       sceneRadius = frame.radius;
-      material.size = Math.max(0.025, sceneRadius / 900);
+      // Preserve the apparent coverage of the old mixed-density selection
+      // while complete EPT levels keep that coverage uniform across the map.
+      material.size = Math.max(0.025, sceneRadius / POINT_SIZE_DIVISOR);
       controls.target.set(0, 0, 0);
       camera.position.set(
         sceneRadius * 1.2,
