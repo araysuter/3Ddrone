@@ -87,9 +87,9 @@ At 1440×900 and 1280×720:
    detail, and that the LAS/LAZ 1.4 fallback remains responsive while its
    worker decodes a multi-million-point cloud. Confirm the 3D model prefers the
    browser-sized textured preview GLB, renders photographic color rather than a
-   white material, displays a visual percentage bar while loading, fits the
-   completed model into view, shows a preparing state while decoding, and
-   retains textured 3D Tiles plus OBJ/MTL/JPEG fallbacks.
+   white material in Chrome, displays a visual percentage bar while loading,
+   fits the completed model into view, shows a preparing state while decoding,
+   and retains textured 3D Tiles plus OBJ/MTL/JPEG fallbacks.
    In both the authenticated and public-share views, verify point-cloud orbit
    reaches a near-overhead view, stops at the ground horizon instead of
    crossing underneath the cloud, repeated wheel input keeps the same zoom step

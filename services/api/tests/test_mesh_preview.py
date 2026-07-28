@@ -21,9 +21,13 @@ def _pad(data: bytes, fill: bytes) -> bytes:
     return data + fill * ((-len(data)) % 4)
 
 
-def _write_textured_glb(path: Path) -> None:
+def _write_textured_glb(
+    path: Path,
+    *,
+    image_size: tuple[int, int] = (128, 64),
+) -> None:
     image_output = io.BytesIO()
-    Image.new("RGB", (128, 64), (20, 120, 220)).save(
+    Image.new("RGB", image_size, (20, 120, 220)).save(
         image_output,
         format="JPEG",
         quality=95,
@@ -135,6 +139,33 @@ def test_artifact_install_generates_a_preview_for_future_projects(tmp_path):
         artifact["path"].endswith(WEB_MESH_FILENAME)
         for artifact in manifest("mesh-install-test")
     )
+
+
+def test_v2_backfill_replaces_the_legacy_preview_at_the_smaller_limit(
+    tmp_path,
+):
+    artifacts = tmp_path / "artifacts"
+    source = (
+        artifacts
+        / "odm_texturing"
+        / "odm_textured_model_geo.glb"
+    )
+    _write_textured_glb(source, image_size=(2048, 1024))
+    source.with_name("odm_textured_model_geo.web.glb").write_bytes(
+        b"legacy preview"
+    )
+
+    assert build_web_mesh_preview(artifacts)
+
+    preview = source.with_name(WEB_MESH_FILENAME)
+    document, binary = _read_glb(preview)
+    image_view = document["bufferViews"][1]
+    image_bytes = binary[
+        image_view["byteOffset"] :
+        image_view["byteOffset"] + image_view["byteLength"]
+    ]
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        assert image.size == (1024, 512)
 
 
 def test_backfill_isolates_a_malformed_legacy_model(tmp_path):

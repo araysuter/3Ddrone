@@ -216,7 +216,7 @@ product.
   so decompression and coordinate conversion do not block the UI.
 - Textured mesh: the API derives a browser preview from ODM's Draco-capable GLB
   without changing its geometry, resizing embedded texture atlases to a
-  GPU-safe maximum of 2048 px. New projects build it during artifact install;
+  GPU-safe maximum of 1024 px. New projects build it during artifact install;
   the durable worker backfills existing projects and republishes their active
   shares. The preview is preferred because it provides one substantially
   smaller, measurable download with photographic color and a percentage bar.

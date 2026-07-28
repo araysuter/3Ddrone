@@ -81,6 +81,20 @@ export function ModelViewer({
       new Promise<THREE.Object3D>((resolve, reject) => {
         const loader = new GLTFLoader();
         loader.setDRACOLoader(draco);
+        // GLTFLoader normally prefers ImageBitmapLoader. Chrome can silently
+        // upload these many embedded ODM texture atlases as blank white
+        // surfaces under GPU memory pressure, even though the bitmaps decode.
+        // Regular image textures use Chrome's more established upload path and
+        // can be released normally when the viewer unmounts.
+        loader.register((parser) => {
+          const textureLoader = new THREE.TextureLoader(
+            parser.options.manager,
+          );
+          textureLoader.setCrossOrigin(parser.options.crossOrigin);
+          textureLoader.setRequestHeader(parser.options.requestHeader);
+          parser.textureLoader = textureLoader;
+          return { name: "ODM_html_image_textures" };
+        });
         loader.load(
           glbUrl,
           (gltf) => resolve(gltf.scene),
@@ -175,14 +189,12 @@ export function ModelViewer({
               ? [mesh.material]
               : [];
           for (const material of materials) {
-            const textured = material as THREE.MeshPhongMaterial;
-            if (textured.map) {
-              textured.map.colorSpace = THREE.SRGBColorSpace;
-              textured.map.needsUpdate = true;
-              textured.color.set(0xffffff);
-            }
-            textured.side = THREE.DoubleSide;
-            textured.needsUpdate = true;
+            // GLTFLoader has already applied the glTF base-color texture,
+            // color space, and material factor. Preserve that state rather
+            // than forcing a second texture upload after Chrome has decoded
+            // the image.
+            material.side = THREE.DoubleSide;
+            material.needsUpdate = true;
           }
         });
         // ODM's OBJ coordinates are Z-up, and its GLB export preserves those

@@ -10,8 +10,8 @@ from pathlib import Path
 
 from PIL import Image
 
-WEB_MESH_FILENAME = "odm_textured_model_geo.web.glb"
-WEB_MESH_MAX_TEXTURE_SIZE = 2048
+WEB_MESH_FILENAME = "odm_textured_model_geo.web-v2.glb"
+WEB_MESH_MAX_TEXTURE_SIZE = 1024
 
 _GLB_MAGIC = b"glTF"
 _GLB_VERSION = 2
