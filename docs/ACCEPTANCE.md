@@ -177,7 +177,8 @@ At 1440×900 and 1280×720:
 25. Open the Project base URL and confirm it replaces the address with the
     newest map's nested URL. Switch maps, reload, and use browser back/forward.
     At phone width, open the keyboard-accessible **Maps** drawer, select a map,
-    and confirm the drawer closes.
+    and confirm the drawer closes. Open every available output and confirm its
+    viewer fills the remaining screen instead of collapsing to zero height.
 26. Rename the Project and a published map, then move a map out and an eligible
     map in. Confirm public labels and membership update without changing the
     remaining snapshot files. Delete the named Project and confirm all
