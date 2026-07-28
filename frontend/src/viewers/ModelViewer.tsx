@@ -48,6 +48,7 @@ export function ModelViewer({
       controls,
       camera,
       renderer.domElement,
+      { allowAboveGroundOrbit: true },
     );
     scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 2.5));
     let disposed = false;

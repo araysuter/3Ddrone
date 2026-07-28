@@ -90,12 +90,13 @@ At 1440×900 and 1280×720:
    white material in Chrome, displays a visual percentage bar while loading,
    fits the completed model into view, shows a preparing state while decoding,
    and retains textured 3D Tiles plus OBJ/MTL/JPEG fallbacks.
-   In both the authenticated and public-share views, verify point-cloud orbit
-   reaches a near-overhead view, stops at the ground horizon instead of
-   crossing underneath the cloud, repeated wheel input keeps the same zoom step
-   at near and far distances, and an equal pointer drag pans the same
-   world-space distance at near and far zoom. Hold the scroll wheel and drag to
-   confirm it pans without orbiting; normal wheel scrolling must still zoom.
+   In both the authenticated and public-share views, verify point-cloud and
+   textured-model orbit reach a near-overhead view, stop at the ground horizon
+   instead of crossing underneath the scene, repeated wheel input keeps the
+   same zoom step at near and far distances, and an equal pointer drag pans the
+   same world-space distance at near and far zoom. Hold the scroll wheel and
+   drag to confirm it pans without orbiting; normal wheel scrolling must still
+   zoom.
    While EPT detail or an adaptive 3D Tiles pass is streaming, confirm the
    locked status appears and orbit, pan, and zoom input has no effect.
    Confirm navigation resumes when that loading pass reaches completion.

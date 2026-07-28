@@ -65,7 +65,7 @@ describe("configureGroundMouseButtons", () => {
 });
 
 describe("groundOrbitPolarLimits", () => {
-  it("lets point clouds orbit from overhead to just above the ground horizon", () => {
+  it("lets point clouds and textured models orbit from overhead to the ground horizon", () => {
     const limits = groundOrbitPolarLimits(1.1, true);
 
     expect(limits.minimum).toBeGreaterThan(0);
@@ -74,7 +74,7 @@ describe("groundOrbitPolarLimits", () => {
     expect(limits.maximum).toBeGreaterThan(Math.PI / 2 - 0.02);
   });
 
-  it("keeps the fixed-elevation behavior for other 3D viewers", () => {
+  it("keeps the fixed-elevation behavior when overhead orbit is not enabled", () => {
     expect(groundOrbitPolarLimits(1.1)).toEqual({
       minimum: 1.1,
       maximum: 1.1,

@@ -222,11 +222,12 @@ product.
   smaller, measurable download with photographic color and a percentage bar.
   OGC 3D Tiles provide progressive color while a preview is unavailable, with
   the original GLB and ODM's authoritative OBJ/MTL/JPEG package as fallbacks.
-- Three-dimensional viewers share ground-anchored navigation. Point-cloud
-  orbit can pitch from near-overhead to the ground horizon but cannot cross
-  below the ground plane. Wheel zoom uses a constant world-space step without
-  a practical distance cap. Right-button or held-scroll-wheel dragging pans at
-  a constant world-space rate rather than scaling with camera distance.
+- Three-dimensional viewers share ground-anchored navigation. Point-cloud and
+  textured-mesh orbit can pitch from near-overhead to the ground horizon but
+  cannot cross below the ground plane. Wheel zoom uses a constant world-space
+  step without a practical distance cap. Right-button or held-scroll-wheel
+  dragging pans at a constant world-space rate rather than scaling with camera
+  distance.
   Interaction stays locked while point-cloud detail is streaming, including
   each adaptive 3D Tiles loading pass, so late data cannot invalidate an
   in-progress camera gesture. Viewer failure handlers keep stable identities so
